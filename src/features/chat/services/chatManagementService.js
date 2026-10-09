@@ -595,6 +595,12 @@ function normalizeConversation(record) {
     assigned_agent_name: record?.assigned_agent_name || record?.assignedAgentName || properties.assigned_agent_name,
     workflow_stage: record?.workflow_stage || record?.workflowStage || properties.workflow_stage || 'new',
     tags: Array.isArray(record?.tags) ? record.tags : (Array.isArray(properties.tags) ? properties.tags : []),
+    phone: record?.phone || properties.phone || '',
+    address: record?.address || properties.address || '',
+    gender: record?.gender || properties.gender || '',
+    is_follower: Boolean(record?.is_follower ?? properties.is_follower),
+    notes: Array.isArray(record?.notes) ? record.notes : (Array.isArray(properties.notes) ? properties.notes : []),
+    customer_info: record?.customer_info || properties.customer_info || null,
     ...(hasConversationBackground ? { conversationBackground } : {}),
   });
 }
@@ -1289,6 +1295,14 @@ export const chatManagementService = {
         access_token: accessToken,
         refresh_token: refreshToken,
       }),
+    });
+  },
+
+  async syncZaloProfile(conversationId) {
+    if (!apiBase) return null;
+    return apiRequest('/api/v1/zalo/conversation/sync_profile', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_id: conversationId }),
     });
   },
 

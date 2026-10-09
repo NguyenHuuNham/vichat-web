@@ -405,10 +405,43 @@ class ZaloService(object):
                     error_code = data.get("error", -1)
                     if error_code == 0:
                         inner = data.get("data", {})
+                        gender_val = inner.get("user_gender")
+                        gender_str = "Nam" if gender_val == 1 else "Nữ" if gender_val == 2 else ""
+
+                        shared_info = inner.get("shared_info") or {}
+                        phone = str(shared_info.get("phone") or "").strip()
+                        if phone and phone != "0":
+                            if not phone.startswith("0") and not phone.startswith("+"):
+                                phone = f"0{phone}"
+                        else:
+                            phone = ""
+
+                        address_parts = [
+                            shared_info.get("address"),
+                            shared_info.get("district"),
+                            shared_info.get("city"),
+                        ]
+                        full_address = ", ".join([str(p).strip() for p in address_parts if p and str(p).strip()])
+
+                        tags_notes = inner.get("tags_and_notes_info") or {}
+                        tag_names = tags_notes.get("tag_names") or []
+                        notes = tags_notes.get("notes") or []
+
+                        is_follower = bool(inner.get("user_is_follower"))
+                        avatars = inner.get("avatars") or {}
+                        avatar = avatars.get("240") or inner.get("avatar") or ""
+
                         return {
                             "user_id": inner.get("user_id"),
                             "display_name": inner.get("display_name", "Khách Zalo"),
-                            "avatar": inner.get("avatar", ""),
+                            "avatar": avatar,
+                            "gender": gender_str,
+                            "phone": phone,
+                            "address": full_address,
+                            "is_follower": is_follower,
+                            "tags": tag_names,
+                            "notes": notes,
+                            "shared_info": shared_info,
                         }
 
                     if error_code in (-216, -124) and retry_on_token_error:

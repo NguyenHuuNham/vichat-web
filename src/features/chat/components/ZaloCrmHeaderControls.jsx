@@ -198,7 +198,7 @@ export default function ZaloCrmHeaderControls({
                       onClick={() => handleSelectAgent(account)}
                     >
                       {accAvatar ? (
-                        <img src={accAvatar} alt={accName} className="zalo-crm-avatar" />
+                        <img src={accAvatar} alt={accName} className="zalo-crm-avatar" referrerPolicy="no-referrer" />
                       ) : (
                         <span className="zalo-crm-avatar-placeholder">
                           {accName.charAt(0).toUpperCase()}

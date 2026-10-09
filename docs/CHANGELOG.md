@@ -6,6 +6,45 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-09-03 - Khac phuc loi template tin nhan mau, mat avatar khach hang Zalo va dong bo toan dien thong tin khach hang tu UpgoBOT:
+
+- Thoi gian: 2026-10-09 11:52 (Asia/Saigon)
+- Loai: Bug Fix & Feature Enhancement | Quick Messages Template, Zalo Avatar Referrer Policy & Customer CRM Sync
+- Trang thai: Hoan tat 100%, test pass toan bo Frontend Web (72/72, 462/462), build production pass (1.13s).
+- Yeu cau tu nguoi dung:
+  1. Fix loi template (tin nhan mau cho agent va loi tich hop tin nhan template tu bot).
+  2. Fix mat avatar khach hang Zalo (hien thi cac chu cai dau H, Q, T, N thay vi anh Zalo).
+  3. Dong bo voi bot ve thong tin khach hang (SDT, dia chi, gioi tinh, trang thai quan tam OA, ghi chu, nhan the).
+  4. Xu ly sach se, triet de va tranh anh huong den cac luong chuc nang khac.
+- Nguyen nhan ky thuat:
+  1. Loi mat avatar khach hang:
+     - Redis luu day du link avatar zadn.vn cua toan bo 789 hoi thoai Hoang Ha Mobile.
+     - CDN Zalo (`*.zadn.vn`, `*.zdn.vn`) co co che anti-hotlinking: khi trinh duyet gui header `Referer` tu origin khac (`https://chat.gonplatform.com`), CDN tra ve HTTP 403 Forbidden.
+     - Ngoai ra Nginx CSP truoc day chua khai bao `*.zadn.vn` va `*.zdn.vn` trong `img-src`, gay vi pham CSP khien the `img` trigger `onError` va hien thi chu cai dau.
+  2. Loi template:
+     - Web composer chua co modal/bo chon tin nhan mau nhanh (Quick Messages) nhu tren app Mobile (`@vichat_quick_messages`).
+     - Tin nhan tu bot chua ho tro render cac button template tuong tac tren Web.
+  3. Thong tin khach hang chua dong bo tu bot:
+     - UpgoBOT (`192.168.80.154`) luu tru thong tin khach hang trong MongoDB `evandb.contact` (`shared_info.phone`, `shared_info.address`, `user_is_follower`, `tags_and_notes_info`) nhung ham `notify_vichat_webhook` chi truyen moi `display_name` va `avatar`.
+     - `chatservice-main/application/services/zalo_service.py` va `api_zalo.py` chua trich xuat cac truong nay de luu vao Redis conversation va tra ve cho Web.
+- Cac thay doi da thuc hien:
+  1. Avatar:
+     - Them `referrerPolicy="no-referrer"` vao the `SafeAvatar`, `ConversationAvatar`, `ZaloCrmHeaderControls`.
+     - Cap nhat CSP trong `infrastructure/production/nginx.conf` va `chatservice-main/application/server.py`: bo sung `https://*.zadn.vn https://*.zdn.vn https://zadn.vn https://zdn.vn`.
+  2. Template (Tin nhan mau):
+     - Tao component `src/features/chat/components/QuickMessagesModal.jsx` voi kho tin nhan mau phong phu, tim kiem realtime, phan loai danh muc, them/xoa, luu tru `localStorage` `@vichat_quick_messages`.
+     - Tich hop nut Sam set ⚡ tren composer Web (`src/app/App.jsx`).
+     - Render tin nhan template co kem button tuong tac (click de gui hoac mo link).
+  3. Dong bo thong tin khach hang:
+     - `chatservice-main/application/services/zalo_service.py`: bo sung lay `phone`, `address`, `gender`, `is_follower`, `tags`, `notes`.
+     - `chatservice-main/application/controllers/api_zalo.py`: them endpoint `POST /api/v1/zalo/conversation/sync_profile`, luu day du `customer_info` vao Redis hoi thoai va tra ve trong danh sach hoi thoai.
+     - Web UI (`src/app/App.jsx`, `src/styles/index.css`): hien thi card "Thong tin khach hang Zalo" o sidebar ben phai kem nut "Dong bo" truc tiep tu Bot & Zalo API.
+- Ket qua kiem thu:
+  - Frontend Web unit tests: `npm run test:frontend` dat toan bo 462/462 tests PASS.
+  - Python compiler: `python -m py_compile` dat toan bo 0 syntax error.
+  - Build production: `npm run build:production` thanh cong trong 1.13s.
+
+
 ## 2026-10-09-02 - Hien thi day du 3 Bot Zalo OA va khac phuc triet de loi danh sach hoi thoai va tin nhan rong tren Web:
 
 - Thoi gian: 2026-10-09 10:48 (Asia/Saigon)

@@ -269,6 +269,19 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
                     "assigned_agent_name": conv_obj.get("assigned_agent_name") or None,
                     "workflow_stage": conv_obj.get("workflow_stage") or "new",
                     "tags": conv_obj.get("tags") or [],
+                    "phone": conv_obj.get("phone") or "",
+                    "address": conv_obj.get("address") or "",
+                    "gender": conv_obj.get("gender") or "",
+                    "is_follower": conv_obj.get("is_follower", False),
+                    "notes": conv_obj.get("notes") or [],
+                    "customer_info": {
+                        "phone": conv_obj.get("phone") or "",
+                        "address": conv_obj.get("address") or "",
+                        "gender": conv_obj.get("gender") or "",
+                        "is_follower": conv_obj.get("is_follower", False),
+                        "tags": conv_obj.get("tags") or [],
+                        "notes": conv_obj.get("notes") or [],
+                    },
                     "messages": messages,
                     "members": [
                         {
@@ -355,15 +368,36 @@ async def zalo_webhook(request):
         logger.info("Ignored duplicate Zalo message msg_id=%s", msg_id)
         return json_response({"status": "duplicate_skipped"}, status=200)
 
-    # Fetch customer profile (display name, avatar) if possible
+    # Fetch customer profile (display name, avatar, phone, address, gender, tags, notes) if possible
     passed_profile = data.get("user_profile") or {}
     customer_name = passed_profile.get("display_name") or passed_profile.get("name")
     customer_avatar = passed_profile.get("avatar") or ""
-    if not customer_name:
+    customer_phone = str(passed_profile.get("phone") or (passed_profile.get("shared_info") or {}).get("phone") or "").strip()
+    customer_address = passed_profile.get("address") or ""
+    customer_gender = passed_profile.get("gender") or ""
+    customer_is_follower = passed_profile.get("is_follower", False)
+    customer_tags = passed_profile.get("tags") or []
+    customer_notes = passed_profile.get("notes") or []
+
+    if not customer_name or not customer_phone or not customer_avatar:
         customer_profile = await zalo_service.get_user_profile(user_id=sender_id, oa_id=oa_id)
-        customer_name = (customer_profile or {}).get("display_name") or "Khách Zalo"
-        if not customer_avatar:
-            customer_avatar = (customer_profile or {}).get("avatar") or ""
+        if customer_profile:
+            if not customer_name:
+                customer_name = customer_profile.get("display_name") or "Khách Zalo"
+            if not customer_avatar:
+                customer_avatar = customer_profile.get("avatar") or ""
+            if not customer_phone and customer_profile.get("phone"):
+                customer_phone = customer_profile.get("phone")
+            if not customer_address and customer_profile.get("address"):
+                customer_address = customer_profile.get("address")
+            if not customer_gender and customer_profile.get("gender"):
+                customer_gender = customer_profile.get("gender")
+            if not customer_is_follower and customer_profile.get("is_follower"):
+                customer_is_follower = customer_profile.get("is_follower")
+            if not customer_tags and customer_profile.get("tags"):
+                customer_tags = customer_profile.get("tags")
+            if not customer_notes and customer_profile.get("notes"):
+                customer_notes = customer_profile.get("notes")
 
     conversation_id = "zalo:{}:{}".format(oa_id or "default", sender_id)
     is_takeover = _is_takeover_active(oa_id, sender_id)
@@ -509,24 +543,40 @@ async def zalo_webhook(request):
                 "timestamp": time.time(),
             }
             redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
-            redisdb.setex(
-                "zalo:conversation:{}".format(conversation_id),
-                86400 * 30,
-                json.dumps({
-                    "id": conversation_id,
-                    "oa_id": oa_id,
-                    "oa_name": oa_name,
-                    "tenant_id": tenant_id,
-                    "channel": "zalo_oa",
-                    "channelType": "zalo_oa",
-                    "name": customer_name,
-                    "avatar": customer_avatar,
-                    "last_message": bot_reply_text or message_text,
-                    "status": status,
-                    "needs_human": needs_human,
-                    "updated_at": time.time(),
-                }),
-            )
+            existing_raw = redisdb.get("zalo:conversation:{}".format(conversation_id))
+            existing_conv = json.loads(existing_raw.decode("utf-8") if isinstance(existing_raw, bytes) else existing_raw) if existing_raw else {}
+
+            merged_phone = customer_phone or existing_conv.get("phone") or ""
+            merged_address = customer_address or existing_conv.get("address") or ""
+            merged_gender = customer_gender or existing_conv.get("gender") or ""
+            merged_is_follower = customer_is_follower if customer_is_follower is not None else existing_conv.get("is_follower", False)
+            merged_tags = customer_tags or existing_conv.get("tags") or []
+            merged_notes = customer_notes or existing_conv.get("notes") or []
+
+            conv_payload = {
+                "id": conversation_id,
+                "oa_id": oa_id,
+                "oa_name": oa_name,
+                "tenant_id": tenant_id,
+                "channel": "zalo_oa",
+                "channelType": "zalo_oa",
+                "name": customer_name or existing_conv.get("name") or "Khách Zalo",
+                "avatar": customer_avatar or existing_conv.get("avatar") or "",
+                "phone": merged_phone,
+                "address": merged_address,
+                "gender": merged_gender,
+                "is_follower": merged_is_follower,
+                "tags": merged_tags,
+                "notes": merged_notes,
+                "workflow_stage": existing_conv.get("workflow_stage") or "new",
+                "assigned_agent_id": existing_conv.get("assigned_agent_id") or None,
+                "assigned_agent_name": existing_conv.get("assigned_agent_name") or None,
+                "last_message": bot_reply_text or message_text,
+                "status": status,
+                "needs_human": needs_human,
+                "updated_at": time.time(),
+            }
+            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_payload))
             redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
             redisdb.sadd("zalo:conversations:index", conversation_id)
         except Exception as sync_exc:
@@ -986,5 +1036,74 @@ async def zalo_conversation_messages(request, conversation_id):
         "total": len(messages),
         "messages": messages,
     }, status=200)
+
+
+@app.route("/api/v1/zalo/conversation/sync_profile", methods=["POST"])
+async def zalo_sync_profile(request):
+    """Sync customer profile on demand from live Zalo OA and Chatbot database."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
+    data = request.json or {}
+    conversation_id = str(data.get("conversation_id") or "").strip()
+    if not conversation_id:
+        return json_response({"error": "Missing conversation_id"}, status=400)
+
+    parts = conversation_id.split(":")
+    oa_id = parts[1] if len(parts) >= 3 else ""
+    user_id = parts[2] if len(parts) >= 3 else ""
+
+    profile = await zalo_service.get_user_profile(user_id=user_id, oa_id=oa_id) or {}
+
+    # Check Chatbot MongoDB on 192.168.80.37 for contact info as secondary source
+    try:
+        from pymongo import MongoClient
+        m_client = MongoClient("mongodb://192.168.80.37:27017", serverSelectionTimeoutMS=1500)
+        c_doc = m_client.evandb.contact.find_one({"id": user_id})
+        if c_doc:
+            if not profile.get("phone") and c_doc.get("phone"):
+                profile["phone"] = str(c_doc["phone"])
+            if not profile.get("address") and c_doc.get("shared_info"):
+                s_info = c_doc["shared_info"]
+                addr_parts = [s_info.get("address"), s_info.get("district"), s_info.get("city")]
+                full_addr = ", ".join([str(p).strip() for p in addr_parts if p and str(p).strip()])
+                if full_addr:
+                    profile["address"] = full_addr
+            if not profile.get("gender") and c_doc.get("gender"):
+                profile["gender"] = c_doc["gender"]
+            if not profile.get("avatar") and c_doc.get("profile_pic"):
+                profile["avatar"] = c_doc["profile_pic"]
+    except Exception as m_exc:
+        logger.debug("Chatbot mongo lookup skipped during profile sync: %s", m_exc)
+
+    if redisdb is not None:
+        raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+        conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv) if raw_conv else {}
+        if profile.get("display_name"):
+            conv_obj["name"] = profile["display_name"]
+        if profile.get("avatar"):
+            conv_obj["avatar"] = profile["avatar"]
+        if profile.get("phone"):
+            conv_obj["phone"] = profile["phone"]
+        if profile.get("address"):
+            conv_obj["address"] = profile["address"]
+        if profile.get("gender"):
+            conv_obj["gender"] = profile["gender"]
+        if "is_follower" in profile:
+            conv_obj["is_follower"] = profile["is_follower"]
+        if profile.get("tags"):
+            conv_obj["tags"] = profile["tags"]
+        if profile.get("notes"):
+            conv_obj["notes"] = profile["notes"]
+        conv_obj["updated_at"] = time.time()
+        redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_obj))
+
+    return json_response({
+        "status": "success",
+        "conversation_id": conversation_id,
+        "profile": profile,
+    }, status=200)
+
 
 

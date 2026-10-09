@@ -8,6 +8,7 @@ import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import useDialogFocusTrap from '../components/useDialogFocusTrap';
 import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
 import ZaloCrmHeaderControls from '../features/chat/components/ZaloCrmHeaderControls';
+import QuickMessagesModal from '../features/chat/components/QuickMessagesModal';
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { startBrowserPresence } from '../features/chat/services/browserPresence';
@@ -916,6 +917,7 @@ function TinodeImagePreview({ source, alt, className = '', copy = { t: value => 
       style={style}
       loading="lazy"
       draggable="false"
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
   );
@@ -2218,7 +2220,7 @@ function SafeAvatar({ src, name, className = '' }) {
   if (!resolvedSrc || failed) {
     return <span className={`${className} avatar-fallback`} aria-label={name || 'Ảnh đại diện'}>{name?.trim?.().slice(0, 1).toUpperCase() || '?'}</span>;
   }
-  return <img src={resolvedSrc} alt={name || 'Ảnh đại diện'} className={className} onError={() => setFailed(true)} />;
+  return <img src={resolvedSrc} alt={name || 'Ảnh đại diện'} className={className} referrerPolicy="no-referrer" onError={() => setFailed(true)} />;
 }
 
 function GroupRoleBadge({ role, copy = { t: value => value } }) {
@@ -2932,7 +2934,11 @@ function ConversationAvatar({ room }) {
   const legacySource = typeof room?.avatarHtml === 'string'
     ? room.avatarHtml.match(/src=["']([^"']+)["']/i)?.[1]
     : '';
-  const source = typeof room?.avatarUrl === 'string' ? room.avatarUrl : legacySource;
+  const source = (typeof room?.avatarUrl === 'string' && room.avatarUrl)
+    ? room.avatarUrl
+    : (typeof room?.avatar === 'string' && room.avatar)
+      ? room.avatar
+      : legacySource;
   if (source) return <SafeAvatar src={source} name={room?.name} />;
   if (React.isValidElement(room?.avatarHtml)) return room.avatarHtml;
   if (room?.isGroup) return <i className="fa-solid fa-users"></i>;
@@ -3515,6 +3521,8 @@ function App() {
   const [messageSearchLoading, setMessageSearchLoading] = useState(false);
   const [messageSearchError, setMessageSearchError] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickMessages, setShowQuickMessages] = useState(false);
+  const [isSyncingZaloProfile, setIsSyncingZaloProfile] = useState(false);
   const [pollComposer, setPollComposer] = useState(null);
   const [isCreatingPoll, setIsCreatingPoll] = useState(false);
   const [composerPickerTab, setComposerPickerTab] = useState('stickers');
@@ -8791,6 +8799,44 @@ function App() {
       return next;
     });
   }, []);
+
+  const handleSyncZaloProfile = useCallback(async () => {
+    if (!activeChat?.id || isSyncingZaloProfile) return;
+    setIsSyncingZaloProfile(true);
+    try {
+      const res = await chatManagementService.syncZaloProfile(activeChat.id);
+      if (res?.profile) {
+        const p = res.profile;
+        setConversations(previous => {
+          const room = previous[activeChat.id];
+          if (!room) return previous;
+          const nextRoom = {
+            ...room,
+            name: p.display_name || room.name,
+            avatar: p.avatar || room.avatar,
+            avatarUrl: p.avatar || room.avatarUrl,
+            phone: p.phone || room.phone,
+            address: p.address || room.address,
+            gender: p.gender || room.gender,
+            is_follower: p.is_follower ?? room.is_follower,
+            tags: Array.isArray(p.tags) && p.tags.length > 0 ? p.tags : room.tags,
+            notes: Array.isArray(p.notes) && p.notes.length > 0 ? p.notes : room.notes,
+            customer_info: {
+              ...(room.customer_info || {}),
+              ...p,
+            },
+          };
+          const next = { ...previous, [activeChat.id]: nextRoom };
+          conversationsRef.current = next;
+          return next;
+        });
+      }
+    } catch (err) {
+      setChatError(err?.message || 'Không thể đồng bộ thông tin khách hàng từ Zalo.');
+    } finally {
+      setIsSyncingZaloProfile(false);
+    }
+  }, [activeChat?.id, isSyncingZaloProfile]);
 
   // Periodic polling for Zalo OA conversations & incoming message alerts
   useEffect(() => {
@@ -15709,9 +15755,9 @@ function App() {
                         )}
                       </div>
                     )}
-                    {/* Tin nhắn chữ thường */}
-                    {msg.type === "text" && msg.text && (
-                      <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''}`}>
+                    {/* Tin nhắn chữ hoặc template */}
+                    {(msg.type === "text" || msg.type === "template" || msg.type === "buttons" || (!isStickerMessage && !isAudioMessage && !imagePreviewSource && !attachmentFile && msg.text)) && (
+                      <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''} ${msg.type === 'template' ? 'template-message-bubble' : ''}`}>
                         <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
@@ -15741,6 +15787,28 @@ function App() {
                           </button>
                         )}
                         <p>{renderMessageText(msg.isWelcome ? appCopy.t(msg.text) : msg.text, msg.mentions)}</p>
+                        {(Array.isArray(msg.buttons) || Array.isArray(msg.attachment?.payload?.buttons)) && (
+                          <div className="message-template-buttons">
+                            {(msg.buttons || msg.attachment?.payload?.buttons || []).map((btn, bIdx) => (
+                              <button
+                                key={bIdx}
+                                type="button"
+                                className="message-template-btn"
+                                onClick={() => {
+                                  const targetUrl = btn.url || btn.payload?.url;
+                                  if (targetUrl) {
+                                    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                                  } else if (btn.title) {
+                                    void handleSendMessage(btn.title);
+                                  }
+                                }}
+                              >
+                                {btn.url || btn.payload?.url ? <i className="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> : <i className="fa-regular fa-circle-dot" aria-hidden="true"></i>}
+                                <span>{btn.title || btn.text}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {reactionPills}
                         {Array.isArray(msg.sources) && msg.sources.length > 0 && (
                           <div className="chatbot-sources">
@@ -16227,6 +16295,17 @@ function App() {
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>
             )}
+            <button
+              type="button"
+              className={`btn-input-action quick-message-action ${showQuickMessages ? 'active' : ''}`}
+              title={appCopy.t('Tin nhắn mẫu')}
+              aria-label={appCopy.t('Mở tin nhắn mẫu')}
+              aria-expanded={showQuickMessages}
+              onClick={() => setShowQuickMessages(previous => !previous)}
+              disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}
+            >
+              <i className="fa-solid fa-bolt"></i>
+            </button>
           </div>}
           <div className={`input-text-container ${isRecordingVoice ? 'voice-recording-container' : ''}`}>
             {isRecordingVoice ? (
@@ -16316,6 +16395,22 @@ function App() {
             {appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}
           </button>
         </div>
+        )}
+        {showQuickMessages && (
+          <QuickMessagesModal
+            isOpen={showQuickMessages}
+            onClose={() => setShowQuickMessages(false)}
+            onSelectMessage={(msgText) => {
+              updateCurrentDraft(inputText ? `${inputText} ${msgText}` : msgText);
+              setShowQuickMessages(false);
+              requestAnimationFrame(() => messageInputRef.current?.focus());
+            }}
+            onSendMessage={(msgText) => {
+              setShowQuickMessages(false);
+              void handleSendMessage(msgText);
+            }}
+            copy={appCopy}
+          />
         )}
         {pollComposer && (
           <div
@@ -16974,6 +17069,21 @@ function App() {
                   <i className="fa-solid fa-chevron-down" aria-hidden="true"></i>
                 </button>
               )
+            ) : isZaloActiveChat ? (
+              <div className="members-section-heading zalo-customer-heading">
+                <h4 className="section-title"><i className="fa-solid fa-address-card" style={{ marginRight: 6, color: '#0068ff' }}></i>{appCopy.t('Thông tin khách hàng Zalo')}</h4>
+                <button
+                  type="button"
+                  className="btn-sync-zalo-profile"
+                  title={appCopy.t('Đồng bộ thông tin từ Zalo & Bot')}
+                  aria-label={appCopy.t('Đồng bộ thông tin từ Zalo & Bot')}
+                  onClick={handleSyncZaloProfile}
+                  disabled={isSyncingZaloProfile}
+                >
+                  <i className={`fa-solid ${isSyncingZaloProfile ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i>
+                  <span>{isSyncingZaloProfile ? appCopy.t('Đang đồng bộ...') : appCopy.t('Đồng bộ')}</span>
+                </button>
+              </div>
             ) : (
               <div className="members-section-heading">
                 <h4 className="section-title">{appCopy.t('Thông tin cá nhân')}</h4>
@@ -17102,6 +17212,96 @@ function App() {
                     </div>
                   </>
                 )}
+                {isZaloActiveChat ? (
+                  <div className="zalo-customer-detail-card">
+                    <div className="zalo-customer-profile-brief">
+                      <div className="zalo-customer-avatar-wrap">
+                        <ConversationAvatar room={activeChat} />
+                      </div>
+                      <div className="zalo-customer-meta">
+                        <span className="zalo-customer-name">{activeChat.name}</span>
+                        <span className="zalo-customer-id">ID: {activeChat.id?.split(':').pop() || activeChat.id}</span>
+                      </div>
+                    </div>
+
+                    <div className="zalo-customer-info-list">
+                      <div className="zalo-customer-info-row">
+                        <span className="zalo-customer-label"><i className="fa-solid fa-store" aria-hidden="true"></i> {appCopy.t('Kênh OA')}</span>
+                        <span className="zalo-customer-value zalo-oa-badge">{activeChat.oa_name || 'Zalo OA'}</span>
+                      </div>
+
+                      <div className="zalo-customer-info-row">
+                        <span className="zalo-customer-label"><i className="fa-solid fa-phone" aria-hidden="true"></i> {appCopy.t('Số điện thoại')}</span>
+                        <span className="zalo-customer-value">
+                          {activeChat.phone ? (
+                            <span className="zalo-phone-wrap">
+                              <a href={`tel:${activeChat.phone}`} className="zalo-phone-link">{activeChat.phone}</a>
+                              <button
+                                type="button"
+                                className="btn-copy-phone"
+                                title={appCopy.t('Sao chép số điện thoại')}
+                                onClick={() => {
+                                  try {
+                                    navigator.clipboard?.writeText(activeChat.phone);
+                                  } catch (_) {}
+                                }}
+                              >
+                                <i className="fa-regular fa-copy" aria-hidden="true"></i>
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="zalo-text-muted">{appCopy.t('Chưa cập nhật')}</span>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="zalo-customer-info-row">
+                        <span className="zalo-customer-label"><i className="fa-solid fa-location-dot" aria-hidden="true"></i> {appCopy.t('Địa chỉ')}</span>
+                        <span className="zalo-customer-value">
+                          {activeChat.address || <span className="zalo-text-muted">{appCopy.t('Chưa cập nhật')}</span>}
+                        </span>
+                      </div>
+
+                      <div className="zalo-customer-info-row">
+                        <span className="zalo-customer-label"><i className="fa-solid fa-venus-mars" aria-hidden="true"></i> {appCopy.t('Giới tính')}</span>
+                        <span className="zalo-customer-value">
+                          {activeChat.gender || <span className="zalo-text-muted">{appCopy.t('Chưa rõ')}</span>}
+                        </span>
+                      </div>
+
+                      <div className="zalo-customer-info-row">
+                        <span className="zalo-customer-label"><i className="fa-solid fa-heart" aria-hidden="true"></i> {appCopy.t('Trạng thái OA')}</span>
+                        <span className="zalo-customer-value">
+                          <span className={`zalo-follower-badge ${activeChat.is_follower ? 'follower' : 'non-follower'}`}>
+                            {activeChat.is_follower ? appCopy.t('Đã quan tâm OA') : appCopy.t('Chưa quan tâm OA')}
+                          </span>
+                        </span>
+                      </div>
+
+                      {Array.isArray(activeChat.tags) && activeChat.tags.length > 0 && (
+                        <div className="zalo-customer-info-row tags-row">
+                          <span className="zalo-customer-label"><i className="fa-solid fa-tags" aria-hidden="true"></i> {appCopy.t('Thẻ / Nhãn')}</span>
+                          <div className="zalo-tags-list">
+                            {activeChat.tags.map((tag, tIdx) => (
+                              <span key={tIdx} className="zalo-tag-pill">{tag}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {Array.isArray(activeChat.notes) && activeChat.notes.length > 0 && (
+                        <div className="zalo-customer-info-row notes-row">
+                          <span className="zalo-customer-label"><i className="fa-solid fa-note-sticky" aria-hidden="true"></i> {appCopy.t('Ghi chú')}</span>
+                          <ul className="zalo-notes-list">
+                            {activeChat.notes.map((note, nIdx) => (
+                              <li key={nIdx}>{note}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                 <div className="members-list">
                   {roomMembers(activeChat).map((member, idx) => {
                     const memberIdentity = String(member.id || member.uid || member.tinodeUid || member.tinode_uid || member.name || idx);
@@ -17209,6 +17409,7 @@ function App() {
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
           </div>}

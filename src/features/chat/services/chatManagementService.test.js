@@ -603,6 +603,8 @@ test('allows Account and S3 media CDN hosts through production CSP', () => {
   assert.match(productionNginxSource, /connect-src[^;]*https:\/\/s3\.gonapp\.net/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/static\.upgo\.vn/);
   assert.match(productionNginxSource, /img-src[^;]*https:\/\/upstart\.vn/);
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/\*\.zadn\.vn/);
+  assert.match(productionNginxSource, /img-src[^;]*https:\/\/\*\.zdn\.vn/);
 });
 
 test('routes Account-managed profiles through the Account avatar contract', () => {
@@ -1106,4 +1108,15 @@ test('personal cloud stays on owner-scoped Chatmgt routes and uses credential-fr
   assert.match(appSource, /onContextMenu=\{event => openMessageMenu\(event, msg\)\}/);
   assert.match(stylesSource, /\.personal-cloud-shortcut/);
   assert.match(stylesSource, /\.personal-cloud-file/);
+});
+
+test('zalo customer profile sync, avatar no-referrer, and quick messages modal', () => {
+  assert.equal(typeof chatManagementService.syncZaloProfile, 'function');
+  assert.match(managementServiceSource, /\/api\/v1\/zalo\/conversation\/sync_profile/);
+  assert.match(appSource, /referrerPolicy="no-referrer"/);
+  assert.match(appSource, /QuickMessagesModal/);
+  assert.match(appSource, /zalo-customer-detail-card/);
+  assert.match(appSource, /handleSyncZaloProfile/);
+  assert.match(stylesSource, /\.quick-messages-modal-card/);
+  assert.match(stylesSource, /\.zalo-customer-detail-card/);
 });
