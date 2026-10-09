@@ -27,8 +27,27 @@ if (Test-Path $builtApk) { Remove-Item -Force $builtApk }
 if (Test-Path $targetApk) { Remove-Item -Force $targetApk }
 
 $env:CMAKE_BUILD_PARALLEL_LEVEL = "1"
+$env:NODE_OPTIONS = "--max-old-space-size=4096"
 
-Set-Location "D:\vichat-build\mobile-scroll-fix-20261004\android"
+Write-Host "[0.5/3] Pre-bundling JavaScript assets with single worker..."
+$stagingDir = "D:\vichat-build\mobile-scroll-fix-20261004"
+New-Item -ItemType Directory -Path "$stagingDir\android\app\build\generated\assets\react\debug" -Force | Out-Null
+New-Item -ItemType Directory -Path "$stagingDir\android\app\build\generated\res\react\debug" -Force | Out-Null
+New-Item -ItemType Directory -Path "$stagingDir\android\app\build\intermediates\sourcemaps\react\debug" -Force | Out-Null
+
+& node "$stagingDir\node_modules\expo\node_modules\@expo\cli\build\bin\cli" export:embed `
+    --platform android --dev false --reset-cache --entry-file index.ts `
+    --bundle-output "$stagingDir\android\app\build\generated\assets\react\debug\index.android.bundle" `
+    --assets-dest "$stagingDir\android\app\build\generated\res\react\debug" `
+    --sourcemap-output "$stagingDir\android\app\build\intermediates\sourcemaps\react\debug\index.android.bundle.packager.map" `
+    --minify false --max-workers 1
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Prebundling failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
+
+Set-Location "$stagingDir\android"
 
 Write-Host "[1/3] Building APK with Gradle on D:..."
 & ".\gradlew.bat" --gradle-user-home "D:\vichat-build\gradle-user-home" :app:assembleDebug -x lint -x test --no-daemon --max-workers=1 "-PreactNativeArchitectures=arm64-v8a" "-Pandroid.native.buildJobs=1"

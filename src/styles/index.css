@@ -8803,6 +8803,50 @@ html[data-theme="dark"] .settings-shell-panel .notification-upload-button { colo
   color: #0369a1;
   font-weight: 600;
 }
+.zalo-crm-bot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+.zalo-crm-bot-toggle.bot-active {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+.zalo-crm-bot-toggle.bot-active:hover {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+.zalo-crm-bot-toggle.bot-paused {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+.zalo-crm-bot-toggle.bot-paused:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+.zalo-crm-bot-toggle.needs-human {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.zalo-crm-bot-toggle.needs-human:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+.zalo-crm-bot-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .zalo-crm-dropdown-wrap {
   position: relative;
   display: inline-block;

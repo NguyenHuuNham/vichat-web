@@ -22,6 +22,8 @@ export default function ZaloCrmHeaderControls({
   const [assignedAgentId, setAssignedAgentId] = useState(conversation?.assigned_agent_id || null);
   const [assignedAgentName, setAssignedAgentName] = useState(conversation?.assigned_agent_name || '');
   const [workflowStage, setWorkflowStage] = useState(conversation?.workflow_stage || 'new');
+  const [takeoverActive, setTakeoverActive] = useState(Boolean(conversation?.takeover_active || conversation?.status === 'agent_handling'));
+  const [takeoverLoading, setTakeoverLoading] = useState(false);
 
   const assignRef = useRef(null);
   const workflowRef = useRef(null);
@@ -31,7 +33,8 @@ export default function ZaloCrmHeaderControls({
     setAssignedAgentId(conversation?.assigned_agent_id || null);
     setAssignedAgentName(conversation?.assigned_agent_name || '');
     setWorkflowStage(conversation?.workflow_stage || 'new');
-  }, [conversation?.id, conversation?.assigned_agent_id, conversation?.assigned_agent_name, conversation?.workflow_stage]);
+    setTakeoverActive(Boolean(conversation?.takeover_active || conversation?.status === 'agent_handling'));
+  }, [conversation?.id, conversation?.assigned_agent_id, conversation?.assigned_agent_name, conversation?.workflow_stage, conversation?.takeover_active, conversation?.status]);
 
   // Load employee directory if accounts is empty
   useEffect(() => {
@@ -122,6 +125,39 @@ export default function ZaloCrmHeaderControls({
     }
   };
 
+  const handleToggleTakeover = async () => {
+    if (takeoverLoading) return;
+    setTakeoverLoading(true);
+    const nextAction = takeoverActive ? 'release' : 'takeover';
+    const parts = String(conversation?.id || '').split(':');
+    const oaId = conversation?.oa_id || (parts.length >= 3 ? parts[1] : 'default');
+    const userId = conversation?.zalo_user_id || conversation?.userId || (parts.length >= 3 ? parts[2] : conversation?.id);
+
+    try {
+      const res = await chatManagementService.toggleZaloTakeover({
+        userId,
+        oaId,
+        action: nextAction,
+      });
+      if (res?.status === 'success') {
+        const newActive = Boolean(res.takeover_active);
+        setTakeoverActive(newActive);
+        if (onConversationUpdated) {
+          onConversationUpdated({
+            ...conversation,
+            takeover_active: newActive,
+            status: newActive ? 'agent_handling' : 'bot_resolved',
+            needs_human: newActive,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to toggle takeover:', err);
+    } finally {
+      setTakeoverLoading(false);
+    }
+  };
+
   const oaName = conversation?.oa_name || 'Zalo OA';
 
   return (
@@ -132,6 +168,37 @@ export default function ZaloCrmHeaderControls({
         <span>Zalo OA</span>
         {oaName && <strong className="zalo-crm-bot-name">· {oaName}</strong>}
       </span>
+
+      {/* Nút Dừng Bot / Chuyển cho Bot */}
+      <button
+        type="button"
+        className={`zalo-crm-bot-toggle ${takeoverActive ? 'bot-paused' : (conversation?.needs_human ? 'needs-human' : 'bot-active')}`}
+        onClick={handleToggleTakeover}
+        disabled={takeoverLoading}
+        title={takeoverActive ? 'Nhân viên đang hỗ trợ trực tiếp. Bấm để chuyển lại cho Bot tự động' : 'Bấm để Dừng Bot và nhân viên trực tiếp vào trả lời'}
+      >
+        {takeoverLoading ? (
+          <>
+            <i className="fa-solid fa-spinner fa-spin"></i>
+            <span>Đang xử lý...</span>
+          </>
+        ) : takeoverActive ? (
+          <>
+            <i className="fa-solid fa-user-shield text-amber"></i>
+            <span>Nhân viên trực · Bật lại Bot</span>
+          </>
+        ) : conversation?.needs_human ? (
+          <>
+            <i className="fa-solid fa-bell text-red animate-bounce"></i>
+            <span>Khách cần hỗ trợ · Dừng Bot</span>
+          </>
+        ) : (
+          <>
+            <i className="fa-solid fa-robot text-emerald"></i>
+            <span>Bot đang trực · Dừng Bot</span>
+          </>
+        )}
+      </button>
 
       {/* Dropdown 1: Chỉ định nhân viên xử lý */}
       <div className="zalo-crm-dropdown-wrap" ref={assignRef}>

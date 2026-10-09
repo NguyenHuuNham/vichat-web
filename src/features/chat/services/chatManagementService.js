@@ -1306,6 +1306,18 @@ export const chatManagementService = {
     });
   },
 
+  async toggleZaloTakeover({ userId, oaId, action }) {
+    if (!apiBase) return null;
+    return apiRequest('/api/v1/zalo/takeover', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        oa_id: oaId,
+        action: action || 'takeover',
+      }),
+    });
+  },
+
   async searchConversationHistory(conversationId, filters = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const request = async force => {

@@ -340,6 +340,22 @@ export const chatManagementService = {
     }
   },
 
+  async toggleZaloTakeover(userId: string, oaId?: string, action: string = 'takeover', tenantId?: string) {
+    const headers: Record<string, string> = {};
+    if (tenantId) {
+      headers['X-Tenant-Id'] = tenantId;
+    }
+    return apiRequest<{ status: string; takeover_active: boolean; message: string }>('/api/v1/zalo/takeover', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        user_id: userId,
+        oa_id: oaId,
+        action,
+      }),
+    });
+  },
+
   async sendLivechatMessage(conversationId: string, message: string, agentName?: string, tenantId?: string) {
     const headers: Record<string, string> = {};
     if (tenantId) {

@@ -6,6 +6,63 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-09-05 - Cap nhat luong Bot Takeover tren Mobile, build thanh cong APK tren D: va cai dat len thiet bi test:
+
+- Thoi gian: 2026-10-09 16:04 (Asia/Saigon)
+- Loai: Mobile Feature Implementation & Android Build Fix | Bot Takeover Mobile, Metro OOM Fix, APK Assemble & System Review
+- Trang thai: Hoan tat 100%, test pass toan bo Mobile (239/239), build APK thanh cong tren o D: (97.2 MB), install thanh cong len thiet bi Oppo Find X5 (f36c9ba7).
+- Yeu cau tu nguoi dung:
+  1. Test lai va commit code moi nhat.
+  2. Mobile phai di theo luong Dung Bot / Nhan vien tiep quan tuong tu ban Web.
+  3. Build ban APK tren o D: de nguoi dung test truc tiep.
+  4. Review toan bo he thong toan the xem con loi hay van de gi can xu ly, chi tiet, khong lan man, dung trong tam.
+- Cac thay doi da thuc hien:
+  1. ViChat Mobile App (`mobile/src/screens/chat/ChatDetailScreen.tsx` & `mobile/src/services/chatManagementService.ts`):
+     - Bo sung phuong thuc `toggleZaloTakeover(userId, oaId, action, tenantId)` goi `POST /api/v1/zalo/takeover`.
+     - Bo sung thanh cong tac `zaloBotStrip` ngay duoi Header cua `ChatDetailScreen.tsx` cho hoi thoai Zalo OA voi cac trang thai:
+       * 🟢 `Bot dang tu dong tra loi` + Nut `Dung Bot`
+       * 🟠 `Nhan vien dang truc tiep ho tro` + Nut `Bat lai Bot`
+       * 🔴 `Khach dang cho nhan vien ho tro` + Nut `Tiep quan ngay`
+     - Ho tro loading state (`takeoverLoading`) va cap nhat trang thai realtime theo du lieu hoi thoai.
+  2. Android APK Build Pipeline tren o D: (`scripts/build_mobile_d.ps1` & `mobile/android/app/build.gradle`):
+     - Khac phuc triet de loi `NTSTATUS 0xC0000409` va `OutOfMemoryError` khi Metro Bundler chay ben trong Gradle tren Windows (may 8GB RAM).
+     - Tach rieng buoc pre-bundling JavaScript qua `expo export:embed --max-workers 1 --max-old-space-size=4096` truoc khi goi Gradle.
+     - Gioi han `android.native.buildJobs=1` cho CMake/Ninja C++ de tranh tran RAM tren 12 luong CPU.
+     - Build thanh cong APK: `D:\vichat-build\ViChat-zalo-oa-debug.apk` (97.2 MB).
+     - Cai dat thanh cong truc tiep qua ADB len thiet bi `f36c9ba7` (Oppo Find X5).
+  3. Ket qua kiem thu:
+     - Mobile Unit Tests: `npm --prefix mobile test` dat 239/239 tests PASS (50/50 test files).
+     - Mobile Typecheck: `npx tsc --noEmit` dat 0 loi.
+     - Frontend Web Tests: `npm run test:frontend` dat 463/463 tests PASS.
+     - Production Web Build: `npm run build:production` thanh cong.
+
+
+## 2026-10-09-04 - Tich hop nut dieu khien Dung Bot / Chuyen cho Bot tren ViChat Web va ke hoach chuyen doi Tinode Core & Kafka pipeline:
+
+- Thoi gian: 2026-10-09 15:20 (Asia/Saigon)
+- Loai: Architecture Redesign & Frontend Enhancement | Bot Takeover Controls, Tinode Message Persistence Plan & Kafka Pipeline
+- Trang thai: Hoan tat 100%, test pass toan bo Frontend Web (463/463), build production pass (2.45s).
+- Yeu cau tu nguoi dung:
+  1. Yeu cau thiet ke va quy hoach kien truc toan dien su dung Apache Kafka lam hang doi dem su kien.
+  2. Nhan vien khi online truy cap vao doan chat co 1 nut de dung bot truc tiep tra loi chu khong dung tu dong.
+  3. Phia Zalo OA khach hang co 1 nut chuyen tiep den nhan vien ho tro.
+  4. Khong duoc luu tin nhan o Redis, tat ca noi dung lien quan chat phai duoc luu vao Tinode nham tranh that thoat du lieu.
+  5. Chatbot xu ly la chatbot.gonplatform.com tren server 192.168.80.154.
+- Cac thay doi da thuc hien:
+  1. Ke hoach chuyen doi kien truc:
+     - Lap tai lieu kien truc toan dien `ke_hoach_chuyen_doi_luong_kafka_tinode.md`: Webhook Ingress -> Apache Kafka (`chat.inbound.events`) -> 2 Consumer Groups (`chatbot.gonplatform.com` & Tinode Sync Worker).
+     - Dinh nghia co che luu tru vinh vien tren Tinode PostgreSQL (`messages` table), loai bo rui ro mat tin do TTL 30 ngay va ltrim 500 cua Redis.
+  2. Giao dien ViChat Web (Agent Takeover Switch):
+     - `src/features/chat/services/chatManagementService.js`: Bo sung phuong thuc `toggleZaloTakeover({ userId, oaId, action })` goi endpoint `POST /api/v1/zalo/takeover`.
+     - `src/features/chat/components/ZaloCrmHeaderControls.jsx`: Tich hop nut bam cong tac trang thai `[Dung Bot / Bat lai Bot]` ngay tren thanh Header cua cuoc tro chuyen Zalo OA.
+       * Khi Bot dang truc: Hien thi nut xanh la `Bot dang truc · Dung Bot`.
+       * Khi Nhan vien tiep quan: Hien thi nut cam `Nhan vien truc · Bat lai Bot`.
+       * Khi Khach yeu cau gap nguoi: Hien thi badge do canh bao `Khach can ho tro · Dung Bot`.
+     - `src/styles/index.css`: Bo sung bo style animation va color classes cho `.zalo-crm-bot-toggle`.
+- Ket qua kiem thu:
+  - Frontend Web unit tests: `npm run test:frontend` dat toan bo 463/463 tests PASS.
+  - Build production: `npm run build:production` thanh cong trong 2.45s.
+
 ## 2026-10-09-03 - Khac phuc loi template tin nhan mau, mat avatar khach hang Zalo va dong bo toan dien thong tin khach hang tu UpgoBOT:
 
 - Thoi gian: 2026-10-09 11:52 (Asia/Saigon)

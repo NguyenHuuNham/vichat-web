@@ -33,6 +33,7 @@ import { TextFormatBar, formatMarkdown, TextFormatType } from '../../components/
 import { GroupEventComposer } from '../../components/GroupEventComposer';
 import { attachmentValidationError, canEditMessage, canInteractWithMessage } from '../../utils/messagePolicy';
 import { directPeerOnline } from '../../utils/tinodeState';
+import { chatManagementService } from '../../services/chatManagementService';
 import { formatMessageDateLabel } from '../../utils/timeFormatting';
 import { beginTrustedExternalActivity } from '../../services/appLifecycleService';
 import { tinodeClient } from '../../services/tinodeClient';
@@ -168,6 +169,38 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const [selectedMentions, setSelectedMentions] = useState<any[]>([]);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [hasEarlier, setHasEarlier] = useState(true);
+  const [takeoverActive, setTakeoverActive] = useState(() =>
+    Boolean((conversation as any)?.takeover_active || (conversation as any)?.status === 'agent_handling')
+  );
+  const [takeoverLoading, setTakeoverLoading] = useState(false);
+
+  useEffect(() => {
+    setTakeoverActive(
+      Boolean((conversation as any)?.takeover_active || (conversation as any)?.status === 'agent_handling')
+    );
+  }, [(conversation as any)?.takeover_active, (conversation as any)?.status, conversation?.id]);
+
+  const handleToggleTakeover = useCallback(async () => {
+    if (takeoverLoading || !conversation) return;
+    setTakeoverLoading(true);
+    const nextAction = takeoverActive ? 'release' : 'takeover';
+    const parts = String(conversation.id || '').split(':');
+    const oaId = (conversation as any)?.oa_id || (parts.length >= 3 ? parts[1] : 'default');
+    const userId = (conversation as any)?.zalo_user_id || (conversation as any)?.userId || (parts.length >= 3 ? parts[2] : conversation.id);
+    const tenantId = (conversation as any)?.tenant_id;
+
+    try {
+      const res = await chatManagementService.toggleZaloTakeover(userId, oaId, nextAction, tenantId);
+      if (res?.status === 'success') {
+        const newActive = Boolean(res.takeover_active);
+        setTakeoverActive(newActive);
+      }
+    } catch (err) {
+      console.warn('Failed to toggle takeover on mobile:', err);
+    } finally {
+      setTakeoverLoading(false);
+    }
+  }, [conversation, takeoverActive, takeoverLoading]);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [unreadJumpDismissed, setUnreadJumpDismissed] = useState(false);
@@ -1251,6 +1284,56 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         ) : null}
         <Pressable accessibilityLabel={t('Thông tin cuộc trò chuyện')} onPress={() => navigation.navigate('GroupInfo', { conversationId: conversation.id })} style={styles.more}><Info color={palette.inkSoft} size={21} /></Pressable>
       </View>
+      {isZaloConversation ? (
+        <View style={styles.zaloBotStrip}>
+          <View style={styles.zaloBotInfo}>
+            <View
+              style={[
+                styles.zaloBotDot,
+                {
+                  backgroundColor: takeoverActive
+                    ? '#f97316'
+                    : (conversation as any)?.needs_human
+                    ? '#ef4444'
+                    : '#10b981',
+                },
+              ]}
+            />
+            <Text style={styles.zaloBotText}>
+              {takeoverActive
+                ? t('Nhân viên đang trực')
+                : (conversation as any)?.needs_human
+                ? t('Khách cần hỗ trợ gấp')
+                : t('Bot tự động đang trực')}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={handleToggleTakeover}
+            disabled={takeoverLoading}
+            style={[
+              styles.zaloBotBtn,
+              {
+                backgroundColor: takeoverActive ? '#fff7ed' : '#ecfdf5',
+                borderColor: takeoverActive ? '#fed7aa' : '#a7f3d0',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.zaloBotBtnText,
+                { color: takeoverActive ? '#c2410c' : '#047857' },
+              ]}
+            >
+              {takeoverLoading
+                ? t('Đang xử lý...')
+                : takeoverActive
+                ? t('Bật lại Bot')
+                : t('Dừng Bot')}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {conversation.isChatbot ? <View style={styles.aiStrip}><View style={styles.aiStripItem}><ShieldCheck color={palette.online} size={14} /><Text style={styles.aiStripText}>{t('Riêng tư')}</Text></View><View style={styles.aiStripItem}><BookOpen color={palette.accent} size={14} /><Text style={styles.aiStripText}>{t('Nguồn rõ ràng')}</Text></View></View> : null}
       {offlineBannerVisible && !recording && !isOmniConversation ? <View style={styles.offline}><WifiOff color={palette.warning} size={15} /><Text style={styles.offlineText}>{t('Realtime đang gián đoạn. Gửi tin nhắn tạm dừng đến khi kết nối lại.')}</Text><Pressable onPress={() => void reconnect()} style={styles.retry}><Text style={styles.retryText}>{t('Thử lại')}</Text></Pressable></View> : null}
       {activeLiveSession && activeLiveSession.conversationId === conversation.id && activeLiveSession.isActive ? (
@@ -1833,5 +1916,42 @@ function createStyles(palette: ThemeColors) {
     latestCount: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, paddingHorizontal: 4, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.danger, borderWidth: 2, borderColor: palette.canvas },
     latestCountText: { color: '#fff', fontSize: 9, lineHeight: 12, fontFamily: 'BeVietnamPro_700Bold' },
     missing: { ...typography.body, color: palette.inkSoft, padding: 30 },
+    zaloBotStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      backgroundColor: '#f8fafc',
+      borderBottomWidth: 1,
+      borderBottomColor: palette.line,
+    },
+    zaloBotInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    zaloBotDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    zaloBotText: {
+      fontSize: 12.5,
+      fontWeight: '600',
+      color: palette.ink,
+      fontFamily: 'BeVietnamPro_600SemiBold',
+    },
+    zaloBotBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 7,
+      borderWidth: 1,
+    },
+    zaloBotBtnText: {
+      fontSize: 12,
+      fontWeight: '700',
+      fontFamily: 'BeVietnamPro_700Bold',
+    },
   });
 }

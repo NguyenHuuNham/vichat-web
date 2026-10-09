@@ -1718,14 +1718,32 @@ ViChat supports multi-tenant omnichannel communication across Zalo OA, Livechat 
 - `POST /api/v1/zalo/takeover`: Cho phép nhân viên chủ động bật/tắt tiếp quản.
 - `GET /api/v1/zalo/conversations`: Liệt kê danh sách hội thoại Zalo kèm trạng thái tiếp quản.
 - `/api/v1/zalo/authorize` và `/api/v1/zalo/callback`: Luồng cấp quyền OAuth PKCE đa đối tác SaaS.
+- `POST /api/v1/zalo/conversation/sync_profile`: Tra cứu và đồng bộ hồ sơ khách hàng từ Zalo Open API và UpgoBOT MongoDB (`phone`, `address`, `gender`, `is_follower`, `tags`, `notes`) vào bản ghi Redis `zalo:conversation:{id}`.
 
-### 3. Frontend Omnichannel Classification (Web & Mobile)
+### 3. Website LiveChat Widget Ingress Bridge (`application/controllers/api_livechat.py`)
+- **Ingress Endpoints**:
+  - `POST /api/v1/internal/livechat/conversations/upsert`: Nhận thông tin phiên chat widget từ Chatbot daemon (`192.168.80.154:10000`), xác thực token nội bộ qua `_verify_internal_token` (`X-Livechat-Internal-Token`), lưu vào Redis `livechat:conversation:{conv_id}` và đánh chỉ mục theo tenant `livechat:conversations:index:{tenant_id}`.
+  - `POST /api/v1/internal/livechat/events`: Nhận sự kiện tin nhắn từ khách truy cập (`VISITOR_MESSAGE`) hoặc tin nhắn từ bot (`OUTBOUND_MESSAGE`, `BOT_ECHO`). Lưu lịch sử vào Redis `livechat:messages:{conv_id}` với giới hạn 500 tin nhắn gần nhất và phát sự kiện qua kênh Redis `vichat:omnichannel:events`.
+- **Outbound Agent Callback**:
+  - Khi nhân viên CSKH trả lời qua ViChat Web/Mobile (`POST /api/v1/livechat/conversations/{id}/reply`), Chatmgt ký chữ ký HMAC-SHA256 (`X-Chat-Manager-Signature`) với `CHAT_MANAGER_INGRESS_SECRET` và gọi `POST /api/v1/internal/widget/chat-manager/events` để đẩy phản hồi trực tiếp về LiveChat widget trên trình duyệt của khách hàng.
+
+### 4. Zalo CDN Hotlink Protection & CSP Media Isolation
+- CDN của Zalo (`*.zadn.vn`, `*.zdn.vn`) kích hoạt cơ chế chống hotlinking khi trình duyệt gửi header `Referer` từ domain ViChat (`chat.gonplatform.com`), trả về HTTP `403 Forbidden`.
+- Web Frontend áp dụng thuộc tính `referrerPolicy="no-referrer"` trên các thẻ `SafeAvatar`, `ConversationAvatar` và `ZaloCrmHeaderControls`.
+- Nginx Web Container (`infrastructure/production/nginx.conf`) và Chatmgt server khai báo rõ ràng trong chỉ thị `Content-Security-Policy`:
+  `img-src ... https://*.zadn.vn https://*.zdn.vn https://zadn.vn https://zdn.vn;`.
+
+### 5. Frontend Omnichannel Classification & CRM Sidebar (Web & Mobile)
 - **Web App**:
   - `CONVERSATION_LIST_TABS`: Thêm `zalo`, `livechat`, `facebook`.
   - Phân loại kênh và badge hiển thị: `resolveConversationChannel`, `getChannelBadge`.
-  - Toolbar lọc kênh: `ConversationListToolbar.jsx` tích hợp các nút chuyển đổi kênh.
+  - Toolbar lọc kênh: `ConversationListToolbar.jsx` tích hợp các nút chuyển đổi dạng Pill Chips chống co chữ (`flex-shrink: 0`).
+  - Thẻ thông tin khách hàng Zalo (Sidebar CRM phải): Hiển thị Kênh OA, SĐT (kèm nút gọi và copy nhanh), Địa chỉ, Giới tính, Trạng thái quan tâm OA, Nhãn thẻ và Ghi chú đồng bộ từ UpgoBOT.
+  - Hộp thoại tin nhắn mẫu (`QuickMessagesModal.jsx`): Nút Sấm sét ⚡ trên thanh soạn thảo, lưu trữ `localStorage` (`@vichat_quick_messages`) đồng bộ với Mobile.
+  - Hỗ trợ tin nhắn Template / Button từ Bot Zalo với các nút bấm tương tác mở liên kết hoặc gửi phản hồi tức thì.
 - **Mobile App**:
   - `mobile/src/types/index.ts`: Mở rộng `ChannelType` (`internal`, `zalo`, `zalo_oa`, `zalo_group`, `livechat`, `facebook`).
   - `mobile/src/utils/channelPolicy.ts`: Nhận diện và lọc hội thoại theo kênh.
   - `ConversationListScreen.tsx` & `ConversationRow.tsx`: Horizontal scroll tabs và badge trực quan (`Zalo` #0068FF, `Livechat` #10B981, `Facebook` #1877F2).
+
 
