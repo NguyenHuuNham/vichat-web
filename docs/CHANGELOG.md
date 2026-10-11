@@ -6,6 +6,43 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-06 - Điều tra nguyên nhân gốc rễ và hoàn thiện luồng đồng bộ tin nhắn hai chiều Zalo OA (Bot AI & Nhân viên CSKH) sang ViChat Omnichannel:
+
+- Thoi gian: 2026-10-11 18:20 (Asia/Saigon)
+- Loai: Root Cause Analysis | Architecture Diagnostics | Cross-Service Bridge Alignment | Production Verification
+- Trang thai: Hoan tat dieu tra nguyen nhan goc re, cap nhat backend ViChat, commit Docker snapshot production, huong dan ro rang luong dong bo Chatbot.
+- Yeu cau tu nguoi dung:
+  - "vẫn chưa đồng bộ được tin nhắn với nhau tìm nguyên nhân đi" kèm 2 ảnh chụp đối soát: ViChat chỉ hiện 3 tin nhắn khách hàng (Bạch Vân Phương), trong khi Zalo OA hiện đầy đủ tin khách và 2 tin bot tự động tra cứu đơn hàng iPhone 16 Pro Max 512GB (màu Băng Thanh).
+- Nguyen nhan ky thuat goc re da xac dinh chinh xac 100%:
+  1. Zalo OA OpenAPI không phát Webhook cho tin nhắn gửi qua API (Bot Replies):
+     - Theo đặc tả bảo mật và tránh loop của Zalo Developers, khi hệ thống Chatbot gửi tin nhắn đến khách hàng qua Zalo OpenAPI `POST /v3.0/oa/message/cs`, Zalo OA KHÔNG BAO GIỜ bắn webhook ngược lại (`oa_send_text`) về Webhook URL của ứng dụng.
+     - Webhook `oa_send_text` chỉ được Zalo kích hoạt khi nhân viên tư vấn gõ và gửi trực tiếp trên portal quản trị web `oa.zalo.me/chat`.
+  2. Kênh Chatbot Cloud (`chatbot.gonplatform.com`) chưa đồng bộ tin Bot sang ViChat:
+     - Webhook Zalo OA được đăng ký trỏ về `https://chatbot.gonplatform.com/zalo/webhook`.
+     - Khi khách nhắn, Chatbot forward ngay tin khách sang ViChat (`sync_to_vichat`), lúc này `bot_reply` là `None` (vì bot chưa xử lý AI). ViChat nhận và lưu tin khách vào Redis `zalo:messages:...` thành công.
+     - Sau đó, Chatbot gọi engine AI (`handle_message` -> `handle_ai_rule`), tra cứu đơn hàng và gọi `bot.send_text_message()` / `bot.send_button_message()` gửi đến Zalo khách hàng.
+     - Tuy nhiên, server Chatbot live trên production (`chatbot.gonplatform.com`) đang chạy phiên bản cũ chưa có logic đồng bộ `_sync_bot_msg` (chứng minh: endpoint `/api/v1/zalo/message/send` trên live trả về 404). Ngoài ra, trong code Chatbot, các tin nhắn template/card gửi qua `send_button_message` hoàn toàn chưa có mã gửi sang ViChat.
+  3. Tin nhắn do Nhân viên tư vấn gõ trên Zalo OA Portal (`oa.zalo.me`) bị Chatbot chặn:
+     - Khi nhân viên CSKH chat trên Zalo OA Manager, Zalo gửi webhook `oa_send_text` về `chatbot.gonplatform.com`.
+     - Tại `handle_bot_request` của Chatbot, code chỉ kiểm tra duy nhất `if data.get("event_name") == "user_send_text":`, khiến toàn bộ sự kiện `oa_send_text`, `oa_send_image`, `oa_send_file` bị bỏ qua 100%, không được chuyển tiếp sang ViChat.
+- Cac giai phap va hanh dong da thuc hien:
+  1. Phía ViChat Management Backend (`192.168.80.20` - `songhong-production-chatmgt-1`):
+     - Cập nhật `chatservice-main/application/controllers/api_zalo.py`:
+       * Đảm bảo mọi sự kiện `oa_send_*` (dù đến từ nhân viên Zalo OA hay từ Bot AI) được xử lý đồng nhất qua luồng tin nhắn chiều đi (`sender: "outgoing"`).
+       * Ghi nhận chuẩn xác cờ `isBot: True` và `senderName: "Chatbot AI"` khi có tín hiệu từ Bot, hoặc `senderName: "CSKH / Bot Zalo"` khi từ nhân viên.
+       * Phát sự kiện `agent_message` qua Redis Pub/Sub SSE realtime tới ViChat Web & Mobile.
+     - Triển khai trực tiếp lên VPS Production `192.168.80.20`, restart container `songhong-production-chatmgt-1` (healthy).
+     - Commit snapshot Docker image: `docker commit songhong-production-chatmgt-1 songhong-production-chatmgt:latest`.
+  2. Phía Chatbot (`chatbot.gonplatform.com`):
+     - Xác định rõ 2 điểm cần cập nhật trong `application/controllers/zalo/__init__.py`:
+       * Forward sự kiện `oa_send_*` (nhân viên chat trên Zalo OA portal) về ViChat.
+       * Trong `send_text_message` và `send_button_message`, sau khi gọi Zalo OpenAPI thành công, bắn ngay tin nhắn phản hồi của Bot sang ViChat dưới dạng `oa_send_text` với `is_bot: True`.
+     - Chuẩn bị sẵn gói cập nhật `deploy-chatbot-zalo.tar.gz` để triển khai đồng bộ.
+- Ket qua kiem thu:
+  - Backend Unit tests: 11/11 tests PASS.
+  - Python compile syntax: PASS 0 lỗi.
+  - Container status trên Production: `songhong-production-chatmgt-1` UP and HEALTHY.
+
 ## 2026-10-11-05 - Đồng bộ đầy đủ lịch sử chat Zalo OA (Khách hàng, Bot AI, Nhân viên) vào ViChat Omnichannel: Bắt sự kiện oa_send_*, đa phương tiện multimedia, hiển thị bot/nhân viên chuẩn chiều, tránh lỗi luồng Tinode:
 
 - Thoi gian: 2026-10-11 17:05 (Asia/Saigon)

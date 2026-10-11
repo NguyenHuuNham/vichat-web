@@ -481,16 +481,22 @@ async def zalo_webhook(request):
                 file_obj = {"url": f_payload.get("url") or "", "name": f_payload.get("name") or "Tệp đính kèm", "size": f_payload.get("size") or ""}
                 message_text = file_obj["name"]
 
+        is_bot = bool(data.get("is_bot") or data.get("from_bot_service") or data.get("from_chatbot"))
+        sender_name = str(data.get("sender_name") or "").strip()
+        if not sender_name:
+            sender_name = "Chatbot AI" if is_bot else (oa_name or "CSKH / Bot Zalo")
+
         oa_msg = {
             "id": msg_id or "oa_{}".format(int(time.time() * 1000)),
             "type": msg_type,
             "sender": "outgoing",
             "senderId": oa_id,
-            "senderName": oa_name or "CSKH / Bot Zalo",
+            "senderName": sender_name,
             "text": message_text or "[Đính kèm]",
             "createdAt": datetime.utcnow().isoformat() + "Z",
             "timestamp": time.time(),
             "channel": "zalo_oa",
+            "isBot": is_bot,
         }
         if img_url:
             oa_msg["image"] = img_url
@@ -521,11 +527,12 @@ async def zalo_webhook(request):
                     "tenant_id": tenant_id,
                     "conversation_id": conversation_id,
                     "sender_id": oa_id,
-                    "agent_name": oa_name or "CSKH / Bot Zalo",
+                    "agent_name": sender_name,
                     "message": message_text or "[Đính kèm]",
                     "message_id": msg_id,
                     "type": msg_type,
                     "timestamp": time.time(),
+                    "is_bot": is_bot,
                 }
                 if img_url:
                     sync_payload["image"] = img_url
