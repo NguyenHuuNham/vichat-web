@@ -6,6 +6,39 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-11 - Chuẩn hóa giao diện tiêu đề hội thoại Zalo CRM (Đề mục 2 hàng, pill badges và bullet separators):
+
+- Thoi gian: 2026-10-11 23:10 (Asia/Saigon)
+- Loai: UI/UX Refinement | Zalo CRM Header Redesign | CSS Pill Badges & Alignment | Production Deployment
+- Trang thai: Hoan tat 100%, 467/467 tests frontend PASS, build production va deploy thanh cong len container `songhong-production-chat-1` (chat.gonplatform.com).
+- Yeu cau tu nguoi dung:
+  - "fix lại mấy đề mục như hình 1 thay cho hình 2 nhìn hình 1 nó căn hợp lý hơn chứ như hình 2 đang lỗi"
+  - Hinh 1 (chuan): Tieu de 2 hang gon dep:
+    + Hang 1: Ten khach hang (Huong) va badge kenh `💬 Zalo OA • Hoang Ha Mobile` nam canh nhau tren cung mot hang.
+    + Hang 2: Ba pill badge cach nhau bang dau cham `•`: `[🟢 Bot: Dang truc | Dung]` • `[👤 Chi dinh nhan vien ˅]` • `[🟠 Chua xu ly ˅]`.
+    + Avatar co cham xanh online goc duoi phai.
+  - Hinh 2 (loi cu): Tieu de bi tach 3 hang vuong viu, nut bam to vuong tho, du nut doi hinh nen khong can thiet.
+- Cac giai phap ky thuat da thuc hien:
+  1. Cau truc lai `ZaloCrmHeaderControls.jsx`:
+     - Boc toan bo tieu de Zalo CRM trong component voi cau truc 2 hang ro rang:
+       + Hang 1 (`.zalo-crm-title-row`): Gom `<h2 className="chat-header-name">` va badge kenh `<span className="zalo-crm-tag-badge">` dang pill bo tron (`border-radius: 9999px`) voi icon tin nhan xanh va text `Zalo OA • {oaName}`.
+       + Hang 2 (`.zalo-crm-header-controls`): Gom 3 pill badge cach nhau bang `<span className="zalo-crm-sep">•</span>`:
+         1. Nut Bot: Dang pill vien xanh nhe, cham xanh `🟢`, text `Bot: Dang truc`, thanh doc `|`, va thao tac `Dung` (khi dung chuyen thanh cham cam `🟠`, `Bot: Da dung | Bat`).
+         2. Nut Chi dinh nhan vien: Dang pill bo tron mau trung tinh voi icon nguoi dung `👤` (`fa-regular fa-user`), text rut gon `Chi dinh nhan vien` (hoac ten nhan vien), va mui ten `˅`.
+         3. Nut Gan nhan quy trinh: Dang pill bo tron voi cham tron mau quy trinh `🟠` (`Chua xu ly`), vien va nen tiep mau stage, kem mui ten `˅`.
+  2. Toi uu `src/app/App.jsx`:
+     - An phu de thua `chat-header-status` ("Khach hang Zalo - ...") khi `isZaloActiveChat` la true, de `ZaloCrmHeaderControls` dam nhan toan bo tieu de theo dung thiet ke Hinh 1.
+     - Bo sung class `zalo-avatar` cho `chat-header-avatar` khi la Zalo chat de hien thi cham xanh trang thai online o goc duoi phai avatar.
+     - An nut "Doi hinh nen" (`fa-image`) doi voi hoi thoai Zalo OA vi Zalo khong dung hinh nen phong.
+  3. Cap nhat CSS tai `src/styles/index.css`:
+     - Thiet lap cac class `.zalo-crm-header-wrapper`, `.zalo-crm-title-row`, `.zalo-crm-tag-badge`, `.zalo-crm-bot-toggle`, `.zalo-crm-sep`, `.zalo-crm-btn`, `.zalo-crm-dot`, `.chat-header-avatar.zalo-avatar`, v.v.
+     - Ap dung kieu dang pill cao cap (`border-radius: 9999px`, height 24px, padding 0 10px, typography chuan sac net).
+     - Ho tro day du che do nen toi (Dark mode) qua cac selector `html[data-theme="dark"]`.
+- Kiem thu va Trien khai:
+  - Kiem thu unit test frontend: 467/467 tests PASS (`npm run test:frontend`).
+  - Build production: Hoan tat voi 0 canh bao/loi (`npm run build:production`).
+  - Triển khai: Deploy toan bo bundle `dist` len container `songhong-production-chat-1` tren server san xuat, reload Nginx va commit snapshot image thanh cong. Live CSS & JS hashes (`index-DtKrl-hB.css`, `index-U1Ffw_Ge.js`) da duoc phuc vu tren https://chat.gonplatform.com/.
+
 ## 2026-10-11-10 - Đồng bộ toàn diện 2 chiều Realtime giữa Tinode Web & Zalo OA, Lưu đầy đủ tin nhắn nhân viên rep và Backfill toàn bộ 2,202 hội thoại vào Tinode:
 
 - Thoi gian: 2026-10-11 22:45 (Asia/Saigon)

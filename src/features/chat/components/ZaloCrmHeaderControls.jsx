@@ -158,171 +158,189 @@ export default function ZaloCrmHeaderControls({
     }
   };
 
-  const oaName = conversation?.oa_name || 'Zalo OA';
+  const oaName = conversation?.oa_name || 'Hoàng Hà Mobile';
+  const customerName = conversation?.name || 'Khách hàng Zalo';
 
   return (
-    <div className="zalo-crm-header-controls">
-      {/* Kênh & Tên Bot Tag */}
-      <span className="zalo-crm-tag-badge">
-        <i className="fa-solid fa-comment-dots"></i>
-        <span>Zalo OA</span>
-        {oaName && <strong className="zalo-crm-bot-name">· {oaName}</strong>}
-      </span>
+    <div className="zalo-crm-header-wrapper">
+      {/* Hàng 1: Tên khách hàng & Tag kênh Zalo OA */}
+      <div className="zalo-crm-title-row">
+        <h2 className="chat-header-name">{customerName}</h2>
+        <span className="zalo-crm-tag-badge">
+          <i className="fa-solid fa-comment-dots" aria-hidden="true"></i>
+          <span>Zalo OA • {oaName}</span>
+        </span>
+      </div>
 
-      {/* Nút Dừng Bot / Chuyển cho Bot */}
-      <button
-        type="button"
-        className={`zalo-crm-bot-toggle ${takeoverActive ? 'bot-paused' : (conversation?.needs_human ? 'needs-human' : 'bot-active')}`}
-        onClick={handleToggleTakeover}
-        disabled={takeoverLoading}
-        title={takeoverActive ? 'Nhân viên đang hỗ trợ trực tiếp. Bấm để chuyển lại cho Bot tự động' : 'Bấm để Dừng Bot và nhân viên trực tiếp vào trả lời'}
-      >
-        {takeoverLoading ? (
-          <>
-            <i className="fa-solid fa-spinner fa-spin"></i>
-            <span>Đang xử lý...</span>
-          </>
-        ) : takeoverActive ? (
-          <>
-            <i className="fa-solid fa-user-shield text-amber"></i>
-            <span>Nhân viên trực · Bật lại Bot</span>
-          </>
-        ) : conversation?.needs_human ? (
-          <>
-            <i className="fa-solid fa-bell text-red animate-bounce"></i>
-            <span>Khách cần hỗ trợ · Dừng Bot</span>
-          </>
-        ) : (
-          <>
-            <i className="fa-solid fa-robot text-emerald"></i>
-            <span>Bot đang trực · Dừng Bot</span>
-          </>
-        )}
-      </button>
-
-      {/* Dropdown 1: Chỉ định nhân viên xử lý */}
-      <div className="zalo-crm-dropdown-wrap" ref={assignRef}>
+      {/* Hàng 2: Các nút điều khiển CRM */}
+      <div className="zalo-crm-header-controls">
+        {/* Nút Dừng Bot / Bật lại Bot */}
         <button
           type="button"
-          className={`zalo-crm-btn ${assignedAgentName ? 'has-assigned' : ''}`}
-          onClick={() => { setAssignOpen(!assignOpen); setWorkflowOpen(false); }}
-          title="Chỉ định nhân viên xử lý"
+          className={`zalo-crm-bot-toggle ${takeoverActive ? 'bot-paused' : (conversation?.needs_human ? 'needs-human' : 'bot-active')}`}
+          onClick={handleToggleTakeover}
+          disabled={takeoverLoading}
+          title={takeoverActive ? 'Nhân viên đang hỗ trợ trực tiếp. Bấm để chuyển lại cho Bot tự động' : 'Bấm để dừng Bot và nhân viên trực tiếp vào trả lời'}
         >
-          {assignedAgentName ? (
+          {takeoverLoading ? (
             <>
-              <i className="fa-solid fa-user-check text-blue"></i>
-              <span className="zalo-crm-agent-name">{assignedAgentName}</span>
+              <i className="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+              <span>Đang xử lý...</span>
+            </>
+          ) : takeoverActive ? (
+            <>
+              <span className="zalo-crm-dot zalo-crm-dot-amber"></span>
+              <span>Bot: Đã dừng</span>
+              <span className="zalo-crm-pipe">|</span>
+              <span className="zalo-crm-action-link">Bật</span>
+            </>
+          ) : conversation?.needs_human ? (
+            <>
+              <span className="zalo-crm-dot zalo-crm-dot-red"></span>
+              <span>Bot: Tạm dừng</span>
+              <span className="zalo-crm-pipe">|</span>
+              <span className="zalo-crm-action-link">Bật</span>
             </>
           ) : (
             <>
-              <span>Chỉ định nhân viên xử lý</span>
+              <span className="zalo-crm-dot zalo-crm-dot-green"></span>
+              <span>Bot: Đang trực</span>
+              <span className="zalo-crm-pipe">|</span>
+              <span className="zalo-crm-action-link">Dừng</span>
             </>
           )}
-          <i className="fa-solid fa-chevron-down zalo-crm-chevron"></i>
         </button>
 
-        {assignOpen && (
-          <div className="zalo-crm-popover">
-            <div className="zalo-crm-search-box">
-              <i className="fa-solid fa-magnifying-glass"></i>
-              <input
-                type="text"
-                placeholder="Tìm kiếm nhân viên..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                autoFocus
-              />
+        {/* Dấu chấm phân cách */}
+        <span className="zalo-crm-sep" aria-hidden="true">•</span>
+
+        {/* Dropdown 1: Chỉ định nhân viên */}
+        <div className="zalo-crm-dropdown-wrap" ref={assignRef}>
+          <button
+            type="button"
+            className={`zalo-crm-btn ${assignedAgentName ? 'has-assigned' : ''}`}
+            onClick={() => { setAssignOpen(!assignOpen); setWorkflowOpen(false); }}
+            title="Chỉ định nhân viên"
+          >
+            <i className={`fa-${assignedAgentName ? 'solid fa-user-check' : 'regular fa-user'} zalo-crm-user-icon`} aria-hidden="true"></i>
+            <span className="zalo-crm-btn-text">{assignedAgentName || 'Chỉ định nhân viên'}</span>
+            <i className="fa-solid fa-chevron-down zalo-crm-chevron" aria-hidden="true"></i>
+          </button>
+
+          {assignOpen && (
+            <div className="zalo-crm-popover">
+              <div className="zalo-crm-search-box">
+                <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm nhân viên..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="zalo-crm-list">
+                {assignedAgentId && (
+                  <div
+                    className="zalo-crm-user-item unassign"
+                    onClick={() => handleSelectAgent(null)}
+                  >
+                    <span className="zalo-crm-avatar-placeholder">
+                      <i className="fa-solid fa-user-xmark" aria-hidden="true"></i>
+                    </span>
+                    <span>Bỏ chỉ định nhân viên</span>
+                  </div>
+                )}
+
+                {loadingUsers ? (
+                  <div className="zalo-crm-empty">Đang tải nhân viên...</div>
+                ) : filteredAccounts.length === 0 ? (
+                  <div className="zalo-crm-empty">Không tìm thấy nhân viên</div>
+                ) : (
+                  filteredAccounts.map(account => {
+                    const accId = account.id || account.uid;
+                    const accName = account.name || account.displayName || account.username || 'Nhân viên';
+                    const accAvatar = account.avatar || account.avatarUrl;
+                    const isSelected = assignedAgentId === accId;
+
+                    return (
+                      <div
+                        key={accId}
+                        className={`zalo-crm-user-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleSelectAgent(account)}
+                      >
+                        {accAvatar ? (
+                          <img src={accAvatar} alt={accName} className="zalo-crm-avatar" referrerPolicy="no-referrer" />
+                        ) : (
+                          <span className="zalo-crm-avatar-placeholder">
+                            {accName.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                        <span className="zalo-crm-user-name">{accName}</span>
+                        {isSelected && <i className="fa-solid fa-check zalo-crm-check" aria-hidden="true"></i>}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
+          )}
+        </div>
 
-            <div className="zalo-crm-list">
-              {assignedAgentId && (
-                <div
-                  className="zalo-crm-user-item unassign"
-                  onClick={() => handleSelectAgent(null)}
-                >
-                  <span className="zalo-crm-avatar-placeholder">
-                    <i className="fa-solid fa-user-xmark"></i>
-                  </span>
-                  <span>Bỏ chỉ định nhân viên</span>
-                </div>
-              )}
+        {/* Dấu chấm phân cách */}
+        <span className="zalo-crm-sep" aria-hidden="true">•</span>
 
-              {loadingUsers ? (
-                <div className="zalo-crm-empty">Đang tải nhân viên...</div>
-              ) : filteredAccounts.length === 0 ? (
-                <div className="zalo-crm-empty">Không tìm thấy nhân viên</div>
-              ) : (
-                filteredAccounts.map(account => {
-                  const accId = account.id || account.uid;
-                  const accName = account.name || account.displayName || account.username || 'Nhân viên';
-                  const accAvatar = account.avatar || account.avatarUrl;
-                  const isSelected = assignedAgentId === accId;
+        {/* Dropdown 2: Gắn nhãn quy trình */}
+        <div className="zalo-crm-dropdown-wrap" ref={workflowRef}>
+          <button
+            type="button"
+            className="zalo-crm-btn zalo-crm-stage-btn"
+            style={{
+              borderColor: currentStage.id === 'new' ? '#fde68a' : `${currentStage.color}80`,
+              backgroundColor: currentStage.id === 'new' ? '#fffbeb' : `${currentStage.color}15`,
+              color: currentStage.id === 'new' ? '#b45309' : currentStage.color,
+            }}
+            onClick={() => { setWorkflowOpen(!workflowOpen); setAssignOpen(false); }}
+            title="Gắn nhãn quy trình"
+          >
+            <span
+              className="zalo-crm-stage-dot"
+              style={{ backgroundColor: currentStage.color }}
+            ></span>
+            <span className="zalo-crm-btn-text">{currentStage.label}</span>
+            <i
+              className="fa-solid fa-chevron-down zalo-crm-chevron"
+              style={{ color: currentStage.id === 'new' ? '#b45309' : currentStage.color }}
+              aria-hidden="true"
+            ></i>
+          </button>
 
+          {workflowOpen && (
+            <div className="zalo-crm-popover workflow-popover">
+              <div className="zalo-crm-popover-title">Gắn nhãn quy trình</div>
+              <div className="zalo-crm-list">
+                {WORKFLOW_STAGES.map(stage => {
+                  const isSelected = workflowStage === stage.id;
                   return (
                     <div
-                      key={accId}
-                      className={`zalo-crm-user-item ${isSelected ? 'selected' : ''}`}
-                      onClick={() => handleSelectAgent(account)}
+                      key={stage.id}
+                      className={`zalo-crm-stage-item ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleSelectWorkflow(stage)}
                     >
-                      {accAvatar ? (
-                        <img src={accAvatar} alt={accName} className="zalo-crm-avatar" referrerPolicy="no-referrer" />
-                      ) : (
-                        <span className="zalo-crm-avatar-placeholder">
-                          {accName.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                      <span className="zalo-crm-user-name">{accName}</span>
-                      {isSelected && <i className="fa-solid fa-check zalo-crm-check"></i>}
+                      <span
+                        className="zalo-crm-stage-dot"
+                        style={{ backgroundColor: stage.color }}
+                      ></span>
+                      <span className="zalo-crm-stage-label">{stage.label}</span>
+                      {isSelected && <i className="fa-solid fa-check zalo-crm-check" aria-hidden="true"></i>}
                     </div>
                   );
-                })
-              )}
+                })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Dropdown 2: Gắn nhãn quy trình */}
-      <div className="zalo-crm-dropdown-wrap" ref={workflowRef}>
-        <button
-          type="button"
-          className="zalo-crm-btn"
-          style={{ borderColor: currentStage.color }}
-          onClick={() => { setWorkflowOpen(!workflowOpen); setAssignOpen(false); }}
-          title="Gắn nhãn quy trình"
-        >
-          <span
-            className="zalo-crm-stage-dot"
-            style={{ backgroundColor: currentStage.color }}
-          ></span>
-          <span>{currentStage.label}</span>
-          <i className="fa-solid fa-chevron-down zalo-crm-chevron"></i>
-        </button>
-
-        {workflowOpen && (
-          <div className="zalo-crm-popover workflow-popover">
-            <div className="zalo-crm-popover-title">Gắn nhãn quy trình</div>
-            <div className="zalo-crm-list">
-              {WORKFLOW_STAGES.map(stage => {
-                const isSelected = workflowStage === stage.id;
-                return (
-                  <div
-                    key={stage.id}
-                    className={`zalo-crm-stage-item ${isSelected ? 'selected' : ''}`}
-                    onClick={() => handleSelectWorkflow(stage)}
-                  >
-                    <span
-                      className="zalo-crm-stage-dot"
-                      style={{ backgroundColor: stage.color }}
-                    ></span>
-                    <span className="zalo-crm-stage-label">{stage.label}</span>
-                    {isSelected && <i className="fa-solid fa-check zalo-crm-check"></i>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

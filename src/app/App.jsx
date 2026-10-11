@@ -15485,21 +15485,24 @@ function App() {
               <button type="button" className="btn-back-mobile" aria-label={appCopy.t('Quay lại danh sách hội thoại')} onClick={() => setIsMobileChatActive(false)}>
                 <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>
               </button>
-              <div className={`chat-header-avatar ${activeChat.avatarClass || ''}`}>
+              <div className={`chat-header-avatar ${activeChat.avatarClass || ''} ${isZaloActiveChat ? 'zalo-avatar' : ''}`}>
                 <ConversationAvatar room={activeChat} />
               </div>
               <div className="chat-header-meta">
-                <h2 className="chat-header-name">{activeChat.name}</h2>
-                <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : activeDirectPeer ? `direct-presence ${accountPresenceTone(activeDirectPeer)}` : ''}`}>
-                  {activeChatPresenceLabel}
-                </span>
-                {isZaloActiveChat && (
+                {isZaloActiveChat ? (
                   <ZaloCrmHeaderControls
                     conversation={activeChat}
                     accounts={directoryAccounts}
                     copy={appCopy}
                     onConversationUpdated={handleZaloConversationUpdated}
                   />
+                ) : (
+                  <>
+                    <h2 className="chat-header-name">{activeChat.name}</h2>
+                    <span className={`chat-header-status ${activeChat.isGroup ? 'group-presence' : activeDirectPeer ? `direct-presence ${accountPresenceTone(activeDirectPeer)}` : ''}`}>
+                      {activeChatPresenceLabel}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -15507,7 +15510,7 @@ function App() {
               <button type="button" className="btn-header-action" title={appCopy.t('Tìm kiếm')} aria-label={appCopy.t('Tìm kiếm')} onClick={() => openWorkspacePanel('search')}>
                 <i className="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
               </button>
-              {!activeChat.isChatbot && activeChat.id !== 'empty' && (
+              {!activeChat.isChatbot && !isZaloActiveChat && activeChat.id !== 'empty' && (
                 <button
                   type="button"
                   className={`btn-header-action ${activeConversationBackground ? 'active' : ''}`}

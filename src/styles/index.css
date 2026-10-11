@@ -8781,110 +8781,329 @@ html[data-theme="dark"] .settings-shell-panel .notification-upload-button { colo
 }
 
 /* ZALO CRM HEADER CONTROLS (Chỉ định nhân viên & Gắn nhãn quy trình) */
-.zalo-crm-header-controls {
-  display: inline-flex;
+.chat-header-avatar.zalo-avatar {
+  position: relative;
+}
+.chat-header-avatar.zalo-avatar::after {
+  content: '';
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 9.5px;
+  height: 9.5px;
+  border-radius: 50%;
+  background-color: #10b981;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  z-index: 2;
+}
+
+.zalo-crm-header-wrapper {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.zalo-crm-title-row {
+  display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 4px;
-  flex-wrap: wrap;
+  line-height: 1.25;
 }
+
+.zalo-crm-title-row .chat-header-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main, #111827);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
 .zalo-crm-tag-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: #e0f2fe;
-  color: #0284c7;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: #eef5ff;
+  border: 1px solid #dbeafe;
+  color: #1d68cd;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.zalo-crm-tag-badge i {
+  color: #1d68cd;
   font-size: 11px;
-  font-weight: 700;
 }
-.zalo-crm-bot-name {
-  color: #0369a1;
-  font-weight: 600;
+
+.zalo-crm-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
+
 .zalo-crm-bot-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 26px;
+  gap: 5px;
+  height: 24px;
   padding: 0 10px;
-  border-radius: 6px;
+  border-radius: 9999px;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   border: 1px solid transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
 }
+
 .zalo-crm-bot-toggle.bot-active {
-  background: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #065f46;
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
 }
+
 .zalo-crm-bot-toggle.bot-active:hover {
-  background: #d1fae5;
-  border-color: #6ee7b7;
+  background: #dcfce7;
+  border-color: #4ade80;
 }
+
 .zalo-crm-bot-toggle.bot-paused {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #c2410c;
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
 }
+
 .zalo-crm-bot-toggle.bot-paused:hover {
-  background: #ffedd5;
-  border-color: #fdba74;
+  background: #fef3c7;
+  border-color: #fcd34d;
 }
+
 .zalo-crm-bot-toggle.needs-human {
   background: #fef2f2;
   border-color: #fecaca;
   color: #b91c1c;
 }
+
 .zalo-crm-bot-toggle.needs-human:hover {
   background: #fee2e2;
   border-color: #fca5a5;
 }
+
 .zalo-crm-bot-toggle:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+.zalo-crm-pipe {
+  opacity: 0.45;
+  margin: 0 2px;
+  font-weight: 300;
+  user-select: none;
+}
+
+.zalo-crm-action-link {
+  font-weight: 600;
+}
+
+.zalo-crm-action-link:hover {
+  text-decoration: underline;
+}
+
+.zalo-crm-sep {
+  color: #9ca3af;
+  font-size: 10px;
+  line-height: 1;
+  margin: 0 1px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
 .zalo-crm-dropdown-wrap {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  flex-shrink: 0;
 }
+
 .zalo-crm-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 26px;
+  gap: 5px;
+  height: 24px;
   padding: 0 10px;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
-  background: #f3f4f6;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
   color: #374151;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  line-height: 1;
 }
+
 .zalo-crm-btn:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
+  background: #f9fafb;
+  border-color: #d1d5db;
 }
+
 .zalo-crm-btn.has-assigned {
   background: #eff6ff;
   border-color: #bfdbfe;
   color: #1d4ed8;
 }
-.zalo-crm-chevron {
-  font-size: 9px;
-  opacity: 0.6;
+
+.zalo-crm-user-icon {
+  font-size: 11px;
+  color: #6b7280;
 }
-.zalo-crm-stage-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
+
+.zalo-crm-btn.has-assigned .zalo-crm-user-icon {
+  color: #1d4ed8;
+}
+
+.zalo-crm-btn-text {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zalo-crm-chevron {
+  font-size: 8.5px;
+  color: #9ca3af;
+  margin-left: 2px;
+}
+
+.zalo-crm-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
+}
+
+.zalo-crm-dot-green {
+  background-color: #10b981;
+}
+
+.zalo-crm-dot-amber {
+  background-color: #f59e0b;
+}
+
+.zalo-crm-dot-red {
+  background-color: #ef4444;
+}
+
+.zalo-crm-stage-dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* Dark mode overrides for Zalo CRM header */
+html[data-theme="dark"] .chat-header-avatar.zalo-avatar::after {
+  border-color: #1e293b;
+}
+
+html[data-theme="dark"] .zalo-crm-tag-badge {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .zalo-crm-tag-badge i {
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .zalo-crm-bot-toggle.bot-active {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+html[data-theme="dark"] .zalo-crm-bot-toggle.bot-active:hover {
+  background: rgba(16, 185, 129, 0.25);
+}
+
+html[data-theme="dark"] .zalo-crm-bot-toggle.bot-paused {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(251, 191, 36, 0.35);
+  color: #fcd34d;
+}
+
+html[data-theme="dark"] .zalo-crm-bot-toggle.bot-paused:hover {
+  background: rgba(245, 158, 11, 0.25);
+}
+
+html[data-theme="dark"] .zalo-crm-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .zalo-crm-btn:hover {
+  background: #334155;
+  border-color: #475569;
+}
+
+html[data-theme="dark"] .zalo-crm-btn.has-assigned {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+}
+
+html[data-theme="dark"] .zalo-crm-user-icon {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .zalo-crm-sep {
+  color: #64748b;
+}
+
+html[data-theme="dark"] .zalo-crm-popover {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+html[data-theme="dark"] .zalo-crm-search-box {
+  background: #0f172a;
+  border-bottom-color: #334155;
+}
+
+html[data-theme="dark"] .zalo-crm-search-box input {
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .zalo-crm-user-item,
+html[data-theme="dark"] .zalo-crm-stage-item {
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .zalo-crm-user-item:hover,
+html[data-theme="dark"] .zalo-crm-stage-item:hover {
+  background: #334155;
+}
+
+html[data-theme="dark"] .zalo-crm-popover-title {
+  border-bottom-color: #334155;
+  color: #94a3b8;
 }
 .zalo-crm-popover {
   position: absolute;
