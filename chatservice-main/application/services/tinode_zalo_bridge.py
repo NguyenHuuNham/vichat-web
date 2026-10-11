@@ -188,6 +188,9 @@ async def get_or_create_zalo_tinode_topic(
             # 4. Asynchronously backfill past messages if any exist
             asyncio.create_task(_backfill_existing_messages(app, topic, cid))
 
+            # 5. Automatically subscribe all tenant staff to the new topic so it appears in Tinode contact lists
+            asyncio.create_task(_subscribe_staff_to_tinode_topic(topic, tenant_id))
+
             return topic
         except Exception as exc:
             logger.error("Failed to get_or_create_zalo_tinode_topic for %s: %s", cid, exc)
@@ -331,3 +334,44 @@ def safe_async_publish_to_tinode(app, topic: str, text: str, sender_name="Khách
         is_bot=is_bot,
         is_agent=is_agent,
     ))
+
+
+def _sync_subscribe_staff_to_topic(topic: str, tenant_id: str):
+    """Subscribes all tenant staff to the newly created Tinode group topic in tinode-postgres."""
+    if not topic or not str(topic).startswith("grp"):
+        return
+    try:
+        import psycopg2
+        dsn = "postgresql://postgres:a5247b5fecfa38212ac08c0d0ea14d1928be9a571a81d5299c74d13cb901f452@tinode-postgres:5432/tinode?sslmode=disable"
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO subscriptions (createdat, updatedat, userid, topic, delid, recvseqid, readseqid, modewant, modegiven)
+            SELECT NOW(), NOW(), a.userid, %s, 0, t.seqid, t.seqid, 'JRWPAS', 'JRWPAS'
+            FROM topics t
+            CROSS JOIN (
+                SELECT DISTINCT userid FROM auth WHERE uname LIKE 'basic:upgo_%' AND uname != 'basic:upgo_chatbot'
+            ) a
+            WHERE t.name = %s
+            ON CONFLICT (topic, userid) DO UPDATE
+            SET modewant = 'JRWPAS', modegiven = 'JRWPAS';
+        """, (topic, topic))
+        cur.execute("""
+            UPDATE topics
+            SET subcnt = (SELECT count(*) FROM subscriptions WHERE topic = %s AND deletedat IS NULL)
+            WHERE name = %s;
+        """, (topic, topic))
+        conn.commit()
+        conn.close()
+        logger.info("Auto-subscribed staff to Tinode topic %s", topic)
+    except Exception as exc:
+        logger.warning("Failed to auto-subscribe staff to Tinode topic %s: %s", topic, exc)
+
+
+async def _subscribe_staff_to_tinode_topic(topic: str, tenant_id: str):
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _sync_subscribe_staff_to_topic, topic, tenant_id)
+    except Exception as exc:
+        logger.warning("Background staff subscription task failed for %s: %s", topic, exc)
+

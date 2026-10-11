@@ -6,6 +6,40 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-09 - Khắc phục hiển thị danh bạ Zalo OA trên Tinode Web (chatapi.gonplatform.com) & Sửa lỗi "Invalid conversation" trên ViChat Web:
+
+- Thoi gian: 2026-10-11 22:00 (Asia/Saigon)
+- Loai: Tinode Subscription Architecture Sync | Database Batch Migration | Web Client Guard Fix | Production Deployment
+- Trang thai: Hoan tat 100%, Backend container songhong-production-chatmgt-1 & Web container songhong-production-chat-1 da deploy va chay healthy tren Server 192.168.80.20, 467/467 tests frontend PASS.
+- Yeu cau tu nguoi dung:
+  - "trong tinode đã có cuộc trò chuyeejnc ủa t và khách hàng khác ở zalo oa đâu"
+  - Anh chup 1: Tinode Web client (chatapi.gonplatform.com/#contacts/usrUfqXWc6rm-8) dang nhap tai khoan "Nguyen Huu Nham" chi hien moi "ViChat AI", khong co bat ky cuoc tro chuyen Zalo OA nao.
+  - Anh chup 2: ViChat Web (chat.gonplatform.com) khi chon cuoc hoi thoai khach hang Zalo "Nham" bao loi toast "Khong the hoan tat thao tac: Invalid conversation" va khung chat trong tron.
+- Nguyen nhan goc re:
+  1. Hien thi Tinode Web (chatapi.gonplatform.com):
+     - Trong Tinode, danh ba hoi thoai cua mot user duoc lay tu topic `me` (`{get: {what: "sub"}}`), tuc la cac ban ghi subscription trong bang `subscriptions` cua PostgreSQL `tinode`.
+     - Mac du tat ca 428 group topic Zalo OA da ton tai trong bang `topics` tren Tinode, nhung khi webhook tao topic thong qua bot he thong `upgo_chatbot`, topic chi co dung 1 subscriber duy nhat la `upgo_chatbot` (`subcnt = 1`).
+     - Cac tai khoan nhan vien (nhu "Nguyen Huu Nham", userid `1582013596802486272`, uid `usre2BVEzc1GU0`) chua duoc gan subscription vao cac group topic nay. Do do, khi dang nhap vao Tinode Web, topic `me` tra ve 0 group topic (chi co p2p bot ViChat AI).
+  2. Loi "Invalid conversation" tren ViChat Web:
+     - Khi nguoi dung chon cuoc hoi thoai Zalo OA hoac tuong tac cac thiet lap tren sidebar, ham `ensureTinodeConversationTopicInternal` va cac xu ly lien quan trong `src/app/App.jsx` da goi `chatManagementService.prepareTinodeConversation(managementConversationId)`.
+     - ID cua kenh Zalo co dang `zalo:262829019064124420:8898974114393933480` khong phai la UUID. Khi goi toi `/api/v1/conversation/<id>/tinode-prepare`, backend `api_chat_management.py:5883` chay `uuid.UUID(str(conversation_id))` nem ra `ValueError` va tra ve HTTP 404 `{"error_code": "NOT_FOUND", "error_message": "Invalid conversation."}`. Frontend bat loi nay va hien toast popup.
+- Cac giai phap da thuc hien:
+  1. Dong bo Subscription cho tat ca nhan vien vao toan bo 428 Topic Zalo OA trong Tinode Database:
+     - Chay migration insert 17,120 dong subscription cho 40 tai khoan nhan vien tenant `gonstack` (bao gom Nguyen Huu Nham `1582013596802486272`) voi `modewant: 'JRWPAS'`, `modegiven: 'JRWPAS'`, dong thoi cap nhat `subcnt` chuan tren tat ca topic.
+     - Kiem thu truc tiep qua Tinode WebSocket noi bo: Topic `me` cua Nguyen Huu Nham hien da tra ve tron ven 429 subscriptions (ViChat AI + tat ca khach hang Zalo OA nhu [Zalo] Nham, [Zalo] Bach Van Phuong, [Zalo] Hang,...). Khi user F5 Tinode Web se thay toan bo danh ba ngay lap tuc.
+  2. Tu dong hoa Auto-subscribe trong Tinode Zalo Bridge (`tinode_zalo_bridge.py`):
+     - Them ham `_subscribe_staff_to_tinode_topic` ket noi truc tiep vao `tinode-postgres`.
+     - Moi khi mot topic Zalo OA moi duoc tao hoac nhan tin nhan moi, he thong tu dong them subscription cho toan bo nhan vien tenant trong PostgreSQL, dam bao moi khach hang Zalo moi deu xuat hien ngay tren Tinode Web cua nhan vien.
+  3. Bao ve Omnichannel Conversations tren ViChat Web (`src/app/App.jsx` & `chatManagementService.js`):
+     - `App.jsx`: Bo sung kiem tra `room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.channel === 'livechat'` trong `ensureTinodeConversationTopicInternal` va `ensureTinodeConversationTopic` de tra ve ngay `room.tinodeTopic || room.id`, bo qua buoc `prepareTinodeConversation` danh cho hoi thoai noi bo UUID.
+     - `chatManagementService.js`: `prepareTinodeConversation` kiem tra regex UUID; neu ID la kenh Zalo/omnichannel, tra ve fallback room an toan thay vi goi API 404.
+     - Bao ve cac thao tac pin, block, mute tren `App.jsx` khi ID khong phai UUID Chatmgt de khong gay ra toast loi.
+  4. Build & Deploy:
+     - Build production web bang `npm run build:production` (su dung cache o D: theo dung quy dinh).
+     - Deploy ban build moi len container `songhong-production-chat-1`, reload Nginx thanh cong.
+     - Deploy `tinode_zalo_bridge.py` vao container `songhong-production-chatmgt-1`, restart va commit snapshot.
+     - 467/467 tests frontend PASS.
+
 ## 2026-10-11-08 - Triển khai Tinode Zalo Bridge: Lưu trữ và đồng bộ toàn bộ tin nhắn Zalo OA vào cơ sở dữ liệu Tinode (chatapi.gonplatform.com) cho ViChat Web & Mobile:
 
 - Thoi gian: 2026-10-11 20:45 (Asia/Saigon)

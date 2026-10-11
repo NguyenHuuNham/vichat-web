@@ -6477,6 +6477,14 @@ function App() {
 
   const ensureTinodeConversationTopicInternal = async (room, { avatarFile = null } = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
+    if (
+      room.channel === 'zalo_oa'
+      || String(room.id || '').startsWith('zalo:')
+      || room.channel === 'livechat'
+      || String(room.id || '').startsWith('livechat:')
+    ) {
+      return room?.tinodeTopic || room?.id || '';
+    }
     const accountSession = accountSessionRef.current;
     const managementConversationId = room.managementId || room.id;
     if (room.accountSession !== accountSession || managementConversationSessionRef.current !== accountSession) {
@@ -6606,6 +6614,14 @@ function App() {
 
   const ensureTinodeConversationTopic = async (room, options = {}) => {
     if (!room || room.isChatbot || chatMode !== 'tinode') return room?.id || '';
+    if (
+      room.channel === 'zalo_oa'
+      || String(room.id || '').startsWith('zalo:')
+      || room.channel === 'livechat'
+      || String(room.id || '').startsWith('livechat:')
+    ) {
+      return room?.tinodeTopic || room?.id || '';
+    }
     const accountSession = accountSessionRef.current;
     const managementConversationId = room.managementId || room.id;
     const requestKey = `${accountSession}:${managementConversationId}`;
@@ -10266,10 +10282,7 @@ function App() {
     try {
       let persistedMuteUntil = mutedUntil;
       const managementConversationId = room.managementId || room.id;
-      if (chatManagementService.remote && chatMode !== 'demo') {
-        if (!isManagementConversationId(managementConversationId)) {
-          throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
-        }
+      if (chatManagementService.remote && chatMode !== 'demo' && isManagementConversationId(managementConversationId)) {
         const updated = await chatManagementService.updateConversationNotifications(
           managementConversationId,
           mutedUntil,
@@ -10364,10 +10377,7 @@ function App() {
     }
     try {
       let persistedState = optimisticState;
-      if (chatManagementService.remote && chatMode !== 'demo') {
-        if (!isManagementConversationId(managementConversationId)) {
-          throw new Error('Chatmgt chưa xác nhận cuộc trò chuyện này.');
-        }
+      if (chatManagementService.remote && chatMode !== 'demo' && isManagementConversationId(managementConversationId)) {
         const updated = await chatManagementService.updateDirectMessageBlock(
           managementConversationId,
           blocked,
@@ -10397,10 +10407,7 @@ function App() {
     try {
       let persistedPinned = nextPinned;
       let persistedPinnedAt = nextPinned ? Math.floor(Date.now() / 1000) : null;
-      if (chatManagementService.remote && chatMode !== 'demo') {
-        if (!isManagementConversationId(managementConversationId)) {
-          throw new Error('Chatmgt chua xac nhan cuoc tro chuyen nay.');
-        }
+      if (chatManagementService.remote && chatMode !== 'demo' && isManagementConversationId(managementConversationId)) {
         const updated = await chatManagementService.updateConversationPin(
           managementConversationId,
           nextPinned,
