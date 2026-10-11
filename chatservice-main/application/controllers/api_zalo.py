@@ -334,6 +334,18 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None, limit: int
                 except Exception:
                     pass
 
+            if not tinode_topic_val:
+                try:
+                    asyncio.create_task(get_or_create_zalo_tinode_topic(
+                        app=app,
+                        oa_id=oa_id,
+                        sender_id=user_id,
+                        customer_name=customer_name,
+                        tenant_id=tenant_id,
+                    ))
+                except Exception:
+                    pass
+
             conversations.append({
                 "id": cid,
                 "managementId": cid,
@@ -1393,10 +1405,37 @@ async def zalo_conversation_messages(request, conversation_id):
     except (ValueError, TypeError):
         pass
     messages = _get_zalo_messages(conversation_id, limit=limit)
+    tinode_topic = ""
+    if redisdb is not None:
+        try:
+            cached_t = redisdb.get("zalo:tinode_topic:{}".format(conversation_id))
+            if cached_t:
+                tinode_topic = (cached_t.decode("utf-8") if isinstance(cached_t, bytes) else str(cached_t)).strip()
+        except Exception:
+            pass
+
+    if not tinode_topic:
+        parts = conversation_id.split(":")
+        if len(parts) >= 3:
+            try:
+                raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id)) if redisdb else None
+                conv_obj = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv) if raw_conv else {}
+                asyncio.create_task(get_or_create_zalo_tinode_topic(
+                    app=app,
+                    oa_id=parts[1],
+                    sender_id=parts[2],
+                    customer_name=conv_obj.get("name") or "Khách Zalo",
+                    tenant_id=tenant_id,
+                ))
+            except Exception:
+                pass
+
     return json_response({
         "status": "success",
         "conversation_id": conversation_id,
         "tenant_id": tenant_id,
+        "tinode_topic": tinode_topic or None,
+        "tinodeTopic": tinode_topic or None,
         "total": len(messages),
         "messages": messages,
     }, status=200)

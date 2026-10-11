@@ -43,6 +43,10 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
      - Frontend test suite: 467/467 tests PASS (`npm run test:frontend`).
      - Mobile test suite: 242/242 tests PASS tren 51 test files (`vitest run`).
      - TypeScript check: 0 loi (`npm --prefix mobile run typecheck`).
+  6. Ke hoach fix bu lich su va On-demand Self-healing:
+     - Hoi thoai khach hang Vuong (`zalo:262829019064124420:2989493932786816939`) da duoc tao topic Tinode `grpxk1qKVODSMc` va dong bo bu tron ven toan bo tin nhan khach va Bot AI vao database Tinode.
+     - Kiem thu xac minh tai khoan nhan vien/admin ket noi WebSocket Tinode va doc thanh cong 100% lich su tin nhan tu topic `grpxk1qKVODSMc` (Seq 1 den Seq 10) voi ma code 200 OK.
+     - Tu dong bu topic on-demand: Ca hai endpoint listing (`_get_active_zalo_conversations_for_listing`) va get messages (`zalo_conversation_messages`) neu phat hien hoi thoai Zalo nao chua co topic Tinode se tu dong goi `asyncio.create_task` tao topic va backfill tin nhan vao Tinode ngay lap tuc trong nen.
 
 ## 2026-10-11-07 - Triển khai (Deploy) và Commit thành công Chatbot Server UpgoBot (192.168.80.154 qua jump host 103.74.122.218): Đồng bộ hai chiều tin nhắn Zalo OA (Bot AI trả lời & Nhân viên CSKH) về ViChat:
 
