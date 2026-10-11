@@ -8920,27 +8920,31 @@ function App() {
           let newIncomingCount = 0;
 
           for (const ev of convEvents) {
-            const rawMsg = ev.customer_message || ev.message;
-            const isAgent = ev.type === 'agent_message' || ev.event === 'agent_message';
+            const rawMsg = ev.customer_message || ev.message || ev.agent_message;
+            const isAgent = ev.type === 'agent_message' || ev.event === 'agent_message' || Boolean(ev.agent_message);
             const eventTimestamp = ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now();
             latestTimestamp = Math.max(latestTimestamp, eventTimestamp);
 
             if (ev.status) latestStatus = ev.status;
             if (typeof ev.needs_human === 'boolean') latestNeedsHuman = ev.needs_human;
 
-            if (rawMsg) {
-              latestMsgText = String(rawMsg);
-              allNewMessages.push({
+            if (rawMsg || ev.image || ev.file) {
+              const msgType = ev.type && ev.type !== 'agent_message' ? ev.type : (ev.image ? 'image' : (ev.file ? 'file' : 'text'));
+              latestMsgText = String(rawMsg || (ev.image ? '[Hình ảnh]' : (ev.file ? '[Tệp đính kèm]' : '')));
+              const msgObj = {
                 id: ev.message_id || `zalo_${eventTimestamp}_${Math.random().toString(36).slice(2, 6)}`,
-                type: 'text',
-                text: String(rawMsg),
+                type: msgType,
+                text: latestMsgText,
                 sender: isAgent ? 'outgoing' : 'incoming',
                 senderId: String(ev.sender_id || (isAgent ? 'agent' : 'customer')),
                 senderName: String(ev.sender_name || ev.agent_name || (isAgent ? 'Bạn' : 'Khách Zalo')),
                 avatar: ev.avatar || '',
                 createdAt: new Date(eventTimestamp).toISOString(),
                 time: new Date(eventTimestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-              });
+              };
+              if (ev.image) msgObj.image = ev.image;
+              if (ev.file) msgObj.file = ev.file;
+              allNewMessages.push(msgObj);
               if (!isAgent) newIncomingCount += 1;
             }
 
@@ -8950,7 +8954,7 @@ function App() {
                 id: `bot_${eventTimestamp + 100}_${Math.random().toString(36).slice(2, 6)}`,
                 type: 'text',
                 text: String(ev.bot_reply),
-                sender: 'incoming',
+                sender: 'outgoing',
                 senderId: 'bot',
                 senderName: 'Chatbot AI',
                 isBot: true,

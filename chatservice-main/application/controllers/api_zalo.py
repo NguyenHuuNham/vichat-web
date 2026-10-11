@@ -436,11 +436,165 @@ async def zalo_webhook(request):
 
     logger.info("Zalo webhook received event=%s oa_id=%s sender=%s", event_name, oa_id, sender_id)
 
-    # Fast ACK to Zalo within SLA
-    if event_name != "user_send_text" or not sender_id or not message_text:
+    # 1. Handle OA outgoing messages (sent by Bot, or by human staff on Zalo OA Manager / Zalo App)
+    is_oa_event = str(event_name or "").startswith("oa_send_")
+    if is_oa_event:
+        customer_id = str(recipient.get("id") or data.get("user_id_by_app") or "").strip()
+        if not customer_id:
+            return json_response({"status": "received", "event": event_name}, status=200)
+
+        if msg_id and _is_duplicate_message(msg_id):
+            logger.info("Ignored duplicate Zalo OA message msg_id=%s", msg_id)
+            return json_response({"status": "duplicate_skipped"}, status=200)
+
+        conversation_id = "zalo:{}:{}".format(oa_id or "default", customer_id)
+        msg_type = "text"
+        img_url = ""
+        file_obj = None
+        attachments = msg_obj.get("attachments") or []
+
+        if event_name == "oa_send_image":
+            msg_type = "image"
+            if attachments and isinstance(attachments, list):
+                img_url = attachments[0].get("payload", {}).get("url") or attachments[0].get("payload", {}).get("thumbnail") or ""
+            if not img_url:
+                img_url = msg_obj.get("url") or msg_obj.get("thumb") or ""
+            message_text = message_text or "[Hình ảnh]"
+        elif event_name == "oa_send_file":
+            msg_type = "file"
+            if attachments and isinstance(attachments, list):
+                f_payload = attachments[0].get("payload", {})
+                f_url = f_payload.get("url") or ""
+                f_name = f_payload.get("name") or "Tệp đính kèm"
+                f_size = f_payload.get("size") or ""
+                file_obj = {"url": f_url, "name": f_name, "size": f_size}
+                message_text = f_name or "[Tệp đính kèm]"
+        elif not message_text and attachments and isinstance(attachments, list):
+            att_type = attachments[0].get("type")
+            if att_type == "image":
+                msg_type = "image"
+                img_url = attachments[0].get("payload", {}).get("url") or ""
+                message_text = "[Hình ảnh]"
+            elif att_type == "file":
+                msg_type = "file"
+                f_payload = attachments[0].get("payload", {})
+                file_obj = {"url": f_payload.get("url") or "", "name": f_payload.get("name") or "Tệp đính kèm", "size": f_payload.get("size") or ""}
+                message_text = file_obj["name"]
+
+        oa_msg = {
+            "id": msg_id or "oa_{}".format(int(time.time() * 1000)),
+            "type": msg_type,
+            "sender": "outgoing",
+            "senderId": oa_id,
+            "senderName": oa_name or "CSKH / Bot Zalo",
+            "text": message_text or "[Đính kèm]",
+            "createdAt": datetime.utcnow().isoformat() + "Z",
+            "timestamp": time.time(),
+            "channel": "zalo_oa",
+        }
+        if img_url:
+            oa_msg["image"] = img_url
+        if file_obj:
+            oa_msg["file"] = file_obj
+
+        _append_zalo_message(conversation_id, oa_msg)
+
+        if redisdb is not None:
+            try:
+                raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
+                conv_data = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv) if raw_conv else {}
+                conv_data.update({
+                    "id": conversation_id,
+                    "channel": "zalo_oa",
+                    "channelType": "zalo_oa",
+                    "last_message": message_text or "[Đính kèm]",
+                    "updated_at": time.time(),
+                })
+                redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
+                redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
+                redisdb.sadd("zalo:conversations:index", conversation_id)
+
+                sync_payload = {
+                    "event": "agent_message",
+                    "channel": "zalo_oa",
+                    "oa_id": oa_id,
+                    "tenant_id": tenant_id,
+                    "conversation_id": conversation_id,
+                    "sender_id": oa_id,
+                    "agent_name": oa_name or "CSKH / Bot Zalo",
+                    "message": message_text or "[Đính kèm]",
+                    "message_id": msg_id,
+                    "type": msg_type,
+                    "timestamp": time.time(),
+                }
+                if img_url:
+                    sync_payload["image"] = img_url
+                if file_obj:
+                    sync_payload["file"] = file_obj
+                redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
+            except Exception as sync_exc:
+                logger.warning("Failed to sync OA outgoing message: %s", sync_exc)
+
+        return json_response({
+            "status": "processed",
+            "event": event_name,
+            "oa_id": oa_id,
+            "customer_id": customer_id,
+            "conversation_id": conversation_id,
+            "message": message_text,
+        }, status=200)
+
+    # 2. Handle customer inbound messages (text, image, sticker, file, audio, location)
+    if not sender_id:
         return json_response({"status": "received", "event": event_name}, status=200)
 
-    if _is_duplicate_message(msg_id):
+    msg_type = "text"
+    img_url = ""
+    file_obj = None
+    attachments = msg_obj.get("attachments") or []
+
+    if event_name == "user_send_image":
+        msg_type = "image"
+        if attachments and isinstance(attachments, list):
+            img_url = attachments[0].get("payload", {}).get("url") or attachments[0].get("payload", {}).get("thumbnail") or ""
+        if not img_url:
+            img_url = msg_obj.get("url") or msg_obj.get("thumb") or ""
+        message_text = message_text or "[Hình ảnh]"
+    elif event_name == "user_send_file":
+        msg_type = "file"
+        if attachments and isinstance(attachments, list):
+            f_payload = attachments[0].get("payload", {})
+            f_url = f_payload.get("url") or ""
+            f_name = f_payload.get("name") or "Tệp đính kèm"
+            f_size = f_payload.get("size") or ""
+            file_obj = {"url": f_url, "name": f_name, "size": f_size}
+            message_text = f_name or "[Tệp đính kèm]"
+    elif event_name == "user_send_sticker":
+        msg_type = "sticker"
+        if attachments and isinstance(attachments, list):
+            img_url = attachments[0].get("payload", {}).get("url") or ""
+        message_text = message_text or "[Sticker]"
+    elif event_name == "user_send_audio":
+        msg_type = "file"
+        if attachments and isinstance(attachments, list):
+            f_url = attachments[0].get("payload", {}).get("url") or ""
+            file_obj = {"url": f_url, "name": "Voice.mp3", "mime": "audio/mp3"}
+        message_text = message_text or "[Tin nhắn thoại]"
+    elif event_name == "user_send_location":
+        msg_type = "text"
+        if attachments and isinstance(attachments, list):
+            addr = attachments[0].get("payload", {}).get("address") or ""
+            message_text = f"[Vị trí: {addr}]" if addr else "[Vị trí]"
+    elif event_name == "user_send_link":
+        msg_type = "text"
+        if attachments and isinstance(attachments, list):
+            l_url = attachments[0].get("payload", {}).get("url") or ""
+            message_text = l_url or message_text or "[Đường dẫn]"
+
+    if not message_text and not img_url and not file_obj:
+        return json_response({"status": "received", "event": event_name}, status=200)
+
+    if msg_id and _is_duplicate_message(msg_id):
         logger.info("Ignored duplicate Zalo message msg_id=%s", msg_id)
         return json_response({"status": "duplicate_skipped"}, status=200)
 
@@ -574,9 +728,9 @@ async def zalo_webhook(request):
                 await zalo_service.send_cs_message(user_id=sender_id, message_text=bot_reply_text, oa_id=oa_id)
 
     # Persist customer message to conversation history
-    _append_zalo_message(conversation_id, {
+    cust_msg = {
         "id": msg_id or "zalo_msg_{}".format(int(time.time() * 1000)),
-        "type": "text",
+        "type": msg_type,
         "sender": "incoming",
         "senderId": sender_id,
         "senderName": customer_name,
@@ -584,14 +738,19 @@ async def zalo_webhook(request):
         "createdAt": datetime.utcnow().isoformat() + "Z",
         "timestamp": time.time(),
         "channel": "zalo_oa",
-    })
+    }
+    if img_url:
+        cust_msg["image"] = img_url
+    if file_obj:
+        cust_msg["file"] = file_obj
+    _append_zalo_message(conversation_id, cust_msg)
 
     # If bot replied (or courtesy message sent), persist bot message to conversation history
     if bot_reply_text:
         _append_zalo_message(conversation_id, {
             "id": "bot_{}".format(int(time.time() * 1000)),
             "type": "text",
-            "sender": "incoming",
+            "sender": "outgoing",
             "senderId": "bot",
             "senderName": "Chatbot AI",
             "text": bot_reply_text,
@@ -618,7 +777,12 @@ async def zalo_webhook(request):
                 "status": status,
                 "needs_human": needs_human,
                 "timestamp": time.time(),
+                "type": msg_type,
             }
+            if img_url:
+                sync_payload["image"] = img_url
+            if file_obj:
+                sync_payload["file"] = file_obj
             redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
             existing_raw = redisdb.get("zalo:conversation:{}".format(conversation_id))
             existing_conv = json.loads(existing_raw.decode("utf-8") if isinstance(existing_raw, bytes) else existing_raw) if existing_raw else {}
@@ -842,6 +1006,10 @@ async def zalo_send_message_manual(request):
         )
 
     if result.get("success"):
+        sent_msg_id = str(result.get("message_id") or result.get("msg_id") or "").strip()
+        if sent_msg_id:
+            _is_duplicate_message(sent_msg_id)
+
         conversation_id = "zalo:{}:{}".format(oa_id or "default", user_id)
         # Activate Human Takeover: Mute bot for this user for 30 minutes
         _set_takeover_active(oa_id, user_id, active=True, ttl=TAKEOVER_TTL_SECONDS)
@@ -849,7 +1017,7 @@ async def zalo_send_message_manual(request):
 
         # Persist agent outgoing message to conversation history
         _append_zalo_message(conversation_id, {
-            "id": "agent_{}".format(int(time.time() * 1000)),
+            "id": sent_msg_id or "agent_{}".format(int(time.time() * 1000)),
             "type": "text",
             "sender": "outgoing",
             "senderId": str(data.get("agent_id") or "agent"),

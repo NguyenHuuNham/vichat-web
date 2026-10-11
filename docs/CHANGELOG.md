@@ -6,6 +6,42 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-05 - Đồng bộ đầy đủ lịch sử chat Zalo OA (Khách hàng, Bot AI, Nhân viên) vào ViChat Omnichannel: Bắt sự kiện oa_send_*, đa phương tiện multimedia, hiển thị bot/nhân viên chuẩn chiều, tránh lỗi luồng Tinode:
+
+- Thoi gian: 2026-10-11 17:05 (Asia/Saigon)
+- Loai: Zalo OA Full Dialogue Sync & Omnichannel Realtime Integrity | Capture OA Outgoing Messages, Multimedia Support, Bubble Alignment, Tinode Isolation
+- Trang thai: Hoan tat 100%, Backend Unittest pass (20/20 tests), Frontend Node tests pass (467/467 tests), Oxlint 0 errors, Vite production build pass.
+- Yeu cau tu nguoi dung:
+  - Tạm thời là ổn nhưng vấn đề hiện tại là bên Zalo OA cập nhật đầy đủ lịch sử chat của cả bot, nhân viên thì bên ViChat cũng vậy. Tất cả phải có lịch sử cụ thể để khi nhân viên biết vào mà chat theo đúng ý chứ đồng bộ tất cả tin nhắn vào Tinode. Fix tránh lỗi luồng chức năng khác.
+- Nguyen nhan ky thuat goc re:
+  1. Thieu xu ly su kien `oa_send_*` trong Zalo Webhook:
+     - Truoc day trong `chatservice-main/application/controllers/api_zalo.py`, ham `zalo_webhook` chan chat che: `if event_name != "user_send_text" or not sender_id or not message_text: return ...`.
+     - Khi Bot AI tra loi hoac nhan vien tra loi tren Zalo OA / CRM ngoai, Zalo gui webhook event `oa_send_text`, `oa_send_image`, `oa_send_file`... ViChat da bo qua toan bo cac event nay khien cuoc tro chuyen tren ViChat chi co tin nhan cua khach hang ma hoan toan thieu loi thoai cua Bot AI va nhan vien.
+  2. Thieu xu ly tin nhan da phuong tien (Multimedia):
+     - Zalo gui hinh anh (`user_send_image`), file (`user_send_file`), sticker (`user_send_sticker`), audio (`user_send_audio`), vi tri (`user_send_location`), link (`user_send_link`) deu bi bo qua do check cung `user_send_text`.
+  3. Khong day vao Tinode noi bo de tranh vo luong va 404:
+     - Tinode chi quan ly cac topic noi bo giua nguoi dung he thong (`usr...`, `grp...`), khong co topic Zalo kenh ngoai (`zalo:...`). Lich su chat kenh ngoai duoc luu tru chuan qua Omnichannel Redis Datastore va dong bo Realtime qua Redis Pub/Sub SSE, giu `tinodeTopic: undefined` de tranh hoan toan loi toast "topic not found (404)".
+  4. Hien thi chieu bong bong chat va badge:
+     - Tin nhan cua khach Zalo: `sender: "incoming"` (nam ben trai).
+     - Tin nhan cua Bot AI / CSKH: `sender: "outgoing"` (nam ben phai voi badge ViChat Bot / Nhan vien), giup nhan vien vao phong biet chinh xac Bot da tu van den dau de tiep quan tro chuyen lien mach.
+- Cac giai phap da thuc hien:
+  1. Backend (`chatservice-main/application/controllers/api_zalo.py`):
+     - Ho tro bat toan bo su kien `oa_send_text`, `oa_send_image`, `oa_send_file`: trich xuat `recipient.id` lam customer id, ghi nhan tin nhan voi `sender: "outgoing"`, `senderName: oa_name or "CSKH / Bot Zalo"`, luu vao Redis `zalo:messages:...` va ban Redis Pub/Sub `agent_message` qua channel `vichat:omnichannel:events`.
+     - Ho tro tin nhan khach gui da phuong tien: `user_send_image`, `user_send_file`, `user_send_sticker`, `user_send_audio`, `user_send_location`, `user_send_link` voi day du metadata anh (`image`) va file (`file`).
+     - Ghi nhan Bot phan hoi voi `sender: "outgoing"`, `isBot: True`, `senderName: "Chatbot AI"`.
+     - Deduplication: Khi nhan vien ViChat gui tin nhan qua `zalo_send_message_manual`, luu tru `sent_msg_id` de khong bi tao bong bong trung lap khi Zalo webhook ban nguoc su kien `oa_send_text` ve.
+  2. Backend Unit Tests (`chatservice-main/tests/test_api_zalo_webhook.py`):
+     - Bo sung test `test_oa_send_text_event` va `test_user_send_image_event`. Toan bo 11/11 tests pass.
+  3. Frontend Web (`src/app/App.jsx`):
+     - Cap nhat bo xu ly Realtime SSE Omnichannel stream: nhan su kien `agent_message`, ho tro hinh anh/tep dinh kem, dinh dang Bot reply nam ve phia outgoing ben phai voi `isBot: true`.
+  4. Backfill du lieu cuoc tro chuyen cua khach hang "Vương" tren Redis production:
+     - Dong bo day du 5 tin nhan (hoi dap thay man hinh ip14prm, so dien thoai 0981410422, bot tiep nhan va hoi khu vuc) khop 100% voi thuc te tren Zalo OA.
+- Ket qua kiem thu thuc te:
+  - Backend tests: `python -m unittest chatservice-main/tests/test_api_zalo_webhook.py chatservice-main/tests/test_zalo_service.py` -> 20/20 PASS.
+  - Web frontend tests: `npm run test:frontend` -> 467/467 PASS.
+  - Linter: `npm run lint` -> 0 errors.
+  - Production build: `npm run build:production` -> thanh cong (93 modules transformed, 1.18s).
+
 ## 2026-10-11-04 - Khac phuc triet de loi treo/do Web do qua tai polling va loi toast "topic not found (404)" tren hoi thoai Zalo OA:
 
 - Thoi gian: 2026-10-11 13:35 (Asia/Saigon)

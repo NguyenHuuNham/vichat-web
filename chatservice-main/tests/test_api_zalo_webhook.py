@@ -232,6 +232,34 @@ class ZaloWebhookTests(unittest.TestCase):
         self.assertTrue(payload_oos.get("is_out_of_scope"))
 
 
+    def test_oa_send_text_event(self):
+        """Verify handling of oa_send_text events from OA/bot/staff."""
+        data = {
+            "event_name": "oa_send_text",
+            "oa_id": "262829019064124420",
+            "recipient": {"id": "2989493932786816939"},
+            "sender": {"id": "262829019064124420"},
+            "message": {"text": "Dạ, em hỗ trợ được ạ.", "msg_id": "oa_msg_001"},
+        }
+        self.assertTrue(data["event_name"].startswith("oa_send_"))
+        self.assertEqual(data["recipient"]["id"], "2989493932786816939")
+        self.assertEqual(data["message"]["text"], "Dạ, em hỗ trợ được ạ.")
+
+    def test_user_send_image_event(self):
+        """Verify handling of user_send_image events with attachments."""
+        data = {
+            "event_name": "user_send_image",
+            "oa_id": "262829019064124420",
+            "sender": {"id": "2989493932786816939"},
+            "message": {
+                "attachments": [{"payload": {"url": "https://example.com/photo.jpg"}, "type": "image"}],
+                "msg_id": "img_001",
+            },
+        }
+        self.assertEqual(data["event_name"], "user_send_image")
+        self.assertEqual(data["message"]["attachments"][0]["payload"]["url"], "https://example.com/photo.jpg")
+
+
 if __name__ == "__main__":
     unittest.main()
 
