@@ -3,6 +3,7 @@ Bridges Zalo OA conversations with central Tinode (chatapi.gonplatform.com).
 Ensures every Zalo customer conversation has a real, persisted Tinode group topic (grp...),
 and publishes every incoming & outgoing message directly to Tinode so that
 Tinode remains the authoritative message store and employee accounts can view full history.
+Also listens for staff replies typed directly in Tinode Web/Mobile and syncs them to Zalo OA in real-time.
 """
 
 import asyncio
@@ -76,6 +77,79 @@ async def _get_tinode_client_ws(app):
     except Exception:
         await session.close()
         raise
+
+
+class TinodeBridgePublisher:
+    """Manages a persistent connection to Tinode for fast, real-time message publishing."""
+
+    def __init__(self):
+        self.session = None
+        self.ws = None
+        self.token = None
+        self._lock = None
+        self.subscribed_topics = set()
+
+    def get_lock(self):
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
+
+    async def get_ws(self, app):
+        async with self.get_lock():
+            if self.ws is not None and not self.ws.closed:
+                return self.ws
+            try:
+                if self.session and not self.session.closed:
+                    await self.session.close()
+            except Exception:
+                pass
+            self.session, self.ws, self.token = await _get_tinode_client_ws(app)
+            self.subscribed_topics.clear()
+            return self.ws
+
+    async def publish(self, app, topic: str, content: str) -> bool:
+        if not topic or not str(topic).startswith("grp") or not content:
+            return False
+
+        for attempt in range(2):
+            try:
+                ws = await self.get_ws(app)
+                # Subscribe once per persistent connection
+                if topic not in self.subscribed_topics:
+                    sub_id = f"sub_{int(time.time()*1000)}"
+                    await ws.send_json({"sub": {"id": sub_id, "topic": topic}})
+                    for _ in range(5):
+                        p = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
+                        if p.get("ctrl") and p["ctrl"].get("id") == sub_id:
+                            break
+                    self.subscribed_topics.add(topic)
+
+                req_id = f"pub_{int(time.time()*1000)}"
+                await ws.send_json({"pub": {"id": req_id, "topic": topic, "content": content}})
+                for _ in range(5):
+                    pkt = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
+                    ctrl = pkt.get("ctrl") or {}
+                    if ctrl.get("id") == req_id:
+                        seq = (ctrl.get("params") or {}).get("seq")
+                        logger.info("Persisted message to Tinode topic %s (seq=%s)", topic, seq)
+                        return True
+                return True
+            except Exception as exc:
+                logger.warning("Tinode publish attempt %d failed for topic %s: %s", attempt, topic, exc)
+                async with self.get_lock():
+                    if self.ws:
+                        try:
+                            await self.ws.close()
+                        except Exception:
+                            pass
+                        self.ws = None
+                if attempt == 1:
+                    logger.error("Failed to publish message to Tinode topic %s: %s", topic, exc)
+                    return False
+        return False
+
+
+_tinode_publisher = TinodeBridgePublisher()
 
 
 async def get_or_create_zalo_tinode_topic(
@@ -209,11 +283,11 @@ async def get_or_create_zalo_tinode_topic(
 
 
 async def _backfill_existing_messages(app, topic: str, cid: str):
-    """Backfills up to 20 past messages from Redis into the newly created Tinode topic."""
+    """Backfills ALL past messages from Redis into the newly created Tinode topic."""
     if not topic or not cid or redisdb is None:
         return
     try:
-        raw_list = redisdb.lrange(f"zalo:messages:{cid}", -20, -1) or []
+        raw_list = redisdb.lrange(f"zalo:messages:{cid}", 0, -1) or []
         if not raw_list:
             return
 
@@ -230,11 +304,18 @@ async def _backfill_existing_messages(app, topic: str, cid: str):
                 msg_dict = json.loads(item.decode("utf-8") if isinstance(item, bytes) else item)
                 text = str(msg_dict.get("text") or "").strip()
                 if not text:
+                    img = msg_dict.get("image")
+                    if img:
+                        text = f"[Hình ảnh: {img}]"
+                    elif msg_dict.get("file"):
+                        text = f"[Tệp đính kèm: {(msg_dict.get('file') or {}).get('name') or 'file'}]"
+                if not text:
                     continue
+
                 sender = msg_dict.get("sender")
                 is_bot = bool(msg_dict.get("isBot") or msg_dict.get("is_bot") or sender == "bot")
                 is_agent = bool(sender == "outgoing" and not is_bot)
-                sender_name = msg_dict.get("senderName") or ("Nhân viên CSKH" if is_agent else "Khách Zalo")
+                sender_name = msg_dict.get("senderName") or msg_dict.get("sender_name") or ("Nhân viên CSKH" if is_agent else "Khách Zalo")
 
                 if is_bot:
                     content = f"🤖 [Bot AI]: {text}"
@@ -276,50 +357,7 @@ async def publish_zalo_message_to_tinode(
     else:
         content = f"👤 [{sender_name}]: {text_clean}"
 
-    session = None
-    ws = None
-    try:
-        session, ws, token = await _get_tinode_client_ws(app)
-
-        # 1. Subscribe to topic
-        await ws.send_json({"sub": {"id": "sub_pub", "topic": topic}})
-        for _ in range(5):
-            pkt = await asyncio.wait_for(ws.receive_json(), timeout=4.0)
-            if pkt.get("ctrl") and pkt["ctrl"].get("id") == "sub_pub":
-                break
-
-        # 2. Publish
-        req_id = f"pub_{int(time.time()*1000)}"
-        await ws.send_json({
-            "pub": {
-                "id": req_id,
-                "topic": topic,
-                "content": content,
-            }
-        })
-        for _ in range(5):
-            pkt = await asyncio.wait_for(ws.receive_json(), timeout=4.0)
-            ctrl = pkt.get("ctrl") or {}
-            if ctrl.get("id") == req_id:
-                seq = (ctrl.get("params") or {}).get("seq")
-                logger.info("Persisted Zalo message to Tinode topic %s (seq=%s)", topic, seq)
-                return True
-
-        return True
-    except Exception as exc:
-        logger.error("Failed to publish Zalo message to Tinode topic %s: %s", topic, exc)
-        return False
-    finally:
-        if ws:
-            try:
-                await ws.close()
-            except Exception:
-                pass
-        if session:
-            try:
-                await session.close()
-            except Exception:
-                pass
+    return await _tinode_publisher.publish(app, topic, content)
 
 
 def safe_async_publish_to_tinode(app, topic: str, text: str, sender_name="Khách Zalo", is_bot=False, is_agent=False):
@@ -375,3 +413,226 @@ async def _subscribe_staff_to_tinode_topic(topic: str, tenant_id: str):
     except Exception as exc:
         logger.warning("Background staff subscription task failed for %s: %s", topic, exc)
 
+
+def extract_clean_tinode_text(content) -> str:
+    """Extracts human-readable text from Tinode message content (JSON string or Drafty)."""
+    if not content:
+        return ""
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, (dict, str)):
+                content = parsed
+        except Exception:
+            pass
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, dict):
+        return str(content.get("txt") or "").strip()
+    return ""
+
+
+def _handle_tinode_staff_reply_sync(app, payload: dict):
+    """Processes staff replies sent from Tinode Web/Mobile and syncs them to Zalo OA and ViChat."""
+    topic = str(payload.get("topic") or "").strip()
+    from_user = payload.get("from")
+    raw_content = payload.get("content")
+    msg_id = payload.get("id")
+
+    if not topic.startswith("grp") or not from_user:
+        return
+
+    # Distributed deduplication check via Redis
+    if redisdb is not None and msg_id:
+        dedupe_key = f"tinode:staff_dedupe:{msg_id}"
+        try:
+            if not redisdb.set(dedupe_key, "1", ex=60, nx=True):
+                return
+        except Exception:
+            pass
+
+    text = extract_clean_tinode_text(raw_content)
+    if not text:
+        return
+
+    # Ignore messages that were already prefixed (bridged messages from Bot, customer, or CS)
+    if text.startswith("🤖 [Bot AI]:") or text.startswith("👤 [") or text.startswith("👩‍💼 ["):
+        return
+
+    oa_id = ""
+    sender_id = ""
+    tenant_id = "gonstack"
+    cid = ""
+
+    # 1. Lookup topic metadata in Redis
+    if redisdb is not None:
+        try:
+            cached_meta = redisdb.get(f"zalo:tinode_meta:{topic}")
+            if cached_meta:
+                meta = json.loads(cached_meta.decode("utf-8") if isinstance(cached_meta, bytes) else cached_meta)
+                oa_id = meta.get("oa_id")
+                sender_id = meta.get("sender_id")
+                tenant_id = meta.get("tenant_id") or "gonstack"
+                cid = meta.get("cid")
+        except Exception:
+            pass
+
+    # 2. If not found in Redis, check Postgres topics table
+    if not oa_id or not sender_id:
+        try:
+            import psycopg2
+            dsn = "postgresql://postgres:a5247b5fecfa38212ac08c0d0ea14d1928be9a571a81d5299c74d13cb901f452@tinode-postgres:5432/tinode?sslmode=disable"
+            conn = psycopg2.connect(dsn)
+            cur = conn.cursor()
+            cur.execute("SELECT public FROM topics WHERE name = %s;", (topic,))
+            row = cur.fetchone()
+            if row and row[0]:
+                pub = row[0] if isinstance(row[0], dict) else json.loads(row[0])
+                if pub.get("channel") == "zalo_oa":
+                    oa_id = str(pub.get("oa_id") or "")
+                    sender_id = str(pub.get("sender_id") or "")
+                    tenant_id = str(pub.get("tenant_id") or "gonstack")
+                    cid = f"zalo:{oa_id}:{sender_id}"
+            conn.close()
+        except Exception as exc:
+            logger.warning("Error querying topic metadata for %s: %s", topic, exc)
+
+    if not oa_id or not sender_id:
+        return
+
+    if not cid:
+        cid = f"zalo:{oa_id}:{sender_id}"
+
+    # 3. Lookup employee name from users table
+    staff_name = "Nhân viên CSKH"
+    try:
+        import psycopg2
+        dsn = "postgresql://postgres:a5247b5fecfa38212ac08c0d0ea14d1928be9a571a81d5299c74d13cb901f452@tinode-postgres:5432/tinode?sslmode=disable"
+        conn = psycopg2.connect(dsn)
+        cur = conn.cursor()
+        cur.execute("SELECT public->>'fn' FROM users WHERE id = %s;", (from_user,))
+        u_row = cur.fetchone()
+        if u_row and u_row[0]:
+            staff_name = str(u_row[0]).strip()
+        conn.close()
+    except Exception:
+        pass
+
+    logger.info("Handling Tinode staff reply from %s (%s) for Zalo %s: %s", staff_name, from_user, cid, text[:50])
+
+    # 4. Deliver CS message to Zalo OA customer
+    try:
+        from application.services import ZaloService
+        z_svc = ZaloService(app)
+        loop = asyncio.new_event_loop()
+        send_res = loop.run_until_complete(z_svc.send_cs_message(
+            user_id=sender_id,
+            message_text=text,
+            oa_id=oa_id,
+        ))
+        loop.close()
+        logger.info("Sent Tinode reply to Zalo customer %s: success=%s", sender_id, send_res.get("success"))
+    except Exception as z_exc:
+        logger.error("Failed to forward Tinode staff reply to Zalo: %s", z_exc)
+
+    # 5. Persist to Redis conversation history
+    oa_msg = {
+        "id": f"tinode_staff_{msg_id or int(time.time()*1000)}",
+        "type": "text",
+        "sender": "outgoing",
+        "senderId": str(from_user),
+        "senderName": staff_name,
+        "text": text,
+        "createdAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": time.time(),
+        "channel": "zalo_oa",
+    }
+    if redisdb is not None:
+        try:
+            from application.controllers.api_zalo import _append_zalo_message, _set_takeover_active, _set_handover_pending
+            _append_zalo_message(cid, oa_msg)
+            _set_takeover_active(oa_id, sender_id, active=True, ttl=1800)
+            _set_handover_pending(oa_id, sender_id, active=False)
+
+            raw_conv = redisdb.get(f"zalo:conversation:{cid}")
+            conv_data = json.loads(raw_conv.decode("utf-8") if isinstance(raw_conv, bytes) else raw_conv) if raw_conv else {}
+            conv_data.update({
+                "id": cid,
+                "channel": "zalo_oa",
+                "channelType": "zalo_oa",
+                "last_message": text,
+                "status": "agent_handling",
+                "needs_human": False,
+                "updated_at": time.time(),
+                "tinode_topic": topic,
+                "tinodeTopic": topic,
+            })
+            redisdb.setex(f"zalo:conversation:{cid}", 86400 * 30, json.dumps(conv_data))
+            redisdb.sadd(f"zalo:conversations:index:{tenant_id}", cid)
+            redisdb.sadd("zalo:conversations:index", cid)
+
+            # 6. Publish to ViChat omnichannel event stream
+            sync_payload = {
+                "event": "agent_message",
+                "channel": "zalo_oa",
+                "oa_id": oa_id,
+                "tenant_id": tenant_id,
+                "conversation_id": cid,
+                "tinode_topic": topic,
+                "tinodeTopic": topic,
+                "sender_id": sender_id,
+                "agent_name": staff_name,
+                "message": text,
+                "status": "agent_handling",
+                "timestamp": time.time(),
+            }
+            redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
+        except Exception as sync_exc:
+            logger.warning("Error syncing Tinode staff reply to Redis: %s", sync_exc)
+
+
+def _listen_tinode_staff_replies(app):
+    """Background listener that uses PostgreSQL LISTEN/NOTIFY to detect staff replies in Tinode."""
+    import psycopg2
+    import select
+    dsn = "postgresql://postgres:a5247b5fecfa38212ac08c0d0ea14d1928be9a571a81d5299c74d13cb901f452@tinode-postgres:5432/tinode?sslmode=disable"
+    while True:
+        try:
+            conn = psycopg2.connect(dsn)
+            conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+            cur = conn.cursor()
+            cur.execute("LISTEN tinode_staff_reply;")
+            logger.info("Subscribed to PostgreSQL 'tinode_staff_reply' notifications.")
+            while True:
+                if select.select([conn], [], [], 5) == ([], [], []):
+                    continue
+                conn.poll()
+                while conn.notifies:
+                    notify = conn.notifies.pop(0)
+                    try:
+                        payload = json.loads(notify.payload)
+                        _handle_tinode_staff_reply_sync(app, payload)
+                    except Exception as p_err:
+                        logger.warning("Error handling tinode_staff_reply notification: %s", p_err)
+        except Exception as exc:
+            logger.warning("Tinode staff reply listener connection dropped, reconnecting in 5s: %s", exc)
+            time.sleep(5)
+
+
+_listener_thread = None
+
+
+def start_tinode_staff_reply_listener(app):
+    """Starts the background thread to listen for staff replies from Tinode."""
+    global _listener_thread
+    if _listener_thread is not None and _listener_thread.is_alive():
+        return
+    import threading
+    _listener_thread = threading.Thread(
+        target=_listen_tinode_staff_replies,
+        args=(app,),
+        daemon=True,
+        name="tinode_staff_reply_listener",
+    )
+    _listener_thread.start()
+    logger.info("Started background Tinode staff reply listener thread.")

@@ -532,6 +532,9 @@ async def zalo_webhook(request):
         if file_obj:
             oa_msg["file"] = file_obj
 
+        # Persist OA outgoing message to conversation history in Redis
+        _append_zalo_message(conversation_id, oa_msg)
+
         # Bridge to Tinode: ensure topic and publish message
         tinode_topic = await get_or_create_zalo_tinode_topic(
             app,
@@ -1108,11 +1111,18 @@ async def zalo_send_message_manual(request):
         # Ensure Tinode topic exists
         tinode_topic = ""
         try:
+            target_cust_name = "Khách Zalo"
+            if redisdb is not None:
+                raw_conv_preview = redisdb.get("zalo:conversation:{}".format(conversation_id))
+                if raw_conv_preview:
+                    preview_obj = json.loads(raw_conv_preview.decode("utf-8") if isinstance(raw_conv_preview, bytes) else raw_conv_preview)
+                    target_cust_name = preview_obj.get("name") or "Khách Zalo"
+
             tinode_topic = await get_or_create_zalo_tinode_topic(
                 app,
                 oa_id=oa_id,
                 sender_id=user_id,
-                customer_name="Khách Zalo",
+                customer_name=target_cust_name,
                 tenant_id=tenant_id,
             )
         except Exception as t_exc:
@@ -1597,6 +1607,17 @@ async def omnichannel_event_stream(request):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.listener("after_server_start")
+async def _start_tinode_reply_listener_hook(app, loop):
+    """Starts the background thread listening for staff replies in Tinode Web/Mobile."""
+    try:
+        from application.services.tinode_zalo_bridge import start_tinode_staff_reply_listener
+        start_tinode_staff_reply_listener(app)
+    except Exception as exc:
+        logger.warning("Failed to start Tinode staff reply listener hook: %s", exc)
+
 
 
 

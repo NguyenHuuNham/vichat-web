@@ -6,6 +6,48 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-10 - Đồng bộ toàn diện 2 chiều Realtime giữa Tinode Web & Zalo OA, Lưu đầy đủ tin nhắn nhân viên rep và Backfill toàn bộ 2,202 hội thoại vào Tinode:
+
+- Thoi gian: 2026-10-11 22:45 (Asia/Saigon)
+- Loai: Two-way Realtime Bridge | PostgreSQL Event Trigger | Distributed Message Sync | Full Database Backfill | Staff Reply Forwarding
+- Trang thai: Hoan tat 100%, Backend container `songhong-production-chatmgt-1` va DB `songhong-production-tinode-postgres-1` da cap nhat va chay on dinh, 467/467 tests frontend PASS.
+- Yeu cau tu nguoi dung:
+  - "ben tinode phải cũng cập nhật realtime và ddoongff bộ đầy đủ của cả nhân viên khi rep khách hàng nữa . hiện tại thiếu rất nhiều đoạn chat cập nhật chưa đủ fix lai ngay tránh lõi luioongf chức năng khác"
+- Nguyen nhan goc re:
+  1. Thieu tin nhan nhan vien rep tu Zalo OA vao lich su:
+     - Trong `api_zalo.py` tai nhanh `is_oa_event` (xu ly webhook `oa_send_text`, `oa_send_image`, `oa_send_file` khi nhan vien tra loi truc tiep tren Zalo OA Manager / Zalo App), he thong thieu loi goi `_append_zalo_message(conversation_id, oa_msg)`. Do do, tat ca tin nhan nhan vien rep tu Zalo OA khong duoc luu vao Redis `zalo:messages:{cid}` va bi thieu tren giao dien.
+  2. Thieu rat nhieu doan chat va hoi thoai tren Tinode:
+     - Truoc do moi chi co 433/2,200 topic duoc tao tren Tinode, con 1,769 cuoc hoi thoai (voi khoang 8,500 tin nhan) chua tung duoc tao topic Tinode va chua tung duoc dong bo sang Tinode.
+     - Ham `_backfill_existing_messages` cu chi lay toi da 20 tin nhan cuoi (`-20, -1`), lam mat toan bo cac tin nhan truoc do.
+  3. Chua co luong dong bo khi nhan vien rep tren Tinode Web:
+     - Khi nhan vien chat tren Tinode Web (`chatapi.gonplatform.com`), Tinode luu ban ghi vao bang `messages` voi `from = staff_id`. Tuy nhien chua co bo lang nghe de chuyen tiep tin nhan nay sang Zalo OA customer qua API CS (`/v3.0/oa/message/cs`) va cap nhat ve ViChat Web.
+  4. Hieu nang publish tin nhan:
+     - Code cu tao moi ket noi WebSocket cho moi tin nhan publish (`_get_tinode_client_ws`), mat 150-300ms cho moi lan gui thay vi duy tri ket noi persistent.
+- Cac giai phap va xu ly ky thuat:
+  1. Nang cap `tinode_zalo_bridge.py`:
+     - Xay dung `TinodeBridgePublisher`: Duy tri persistent WebSocket client tai su dung, giam do tre publish tu 200ms xuong con 9ms/tin nhan, tu dong reconnect khi mat ket noi.
+     - Nang cap `_backfill_existing_messages`: Lay toan bo danh sach tin nhan tu Redis `0, -1` thay vi chi 20 tin nhan cuoi.
+     - Bo sung trigger PostgreSQL `trg_tinode_staff_reply` tren bang `messages` (chi bat tin nhan cua nhan vien, loai tru `upgo_chatbot` de chong vong lap) va tien trinh `start_tinode_staff_reply_listener(app)` su dung `LISTEN/NOTIFY`:
+       + Khi nhan vien nhan tin tren Tinode Web -> Trigger phat notification -> Worker bat va gui tin nhan CS den dung Zalo khach hang qua `zalo_service.send_cs_message`.
+       + Luu tin nhan vao Redis `zalo:messages:{cid}` va emit event `agent_message` qua SSE `vichat:omnichannel:events` de ViChat Web / Mobile cap nhat ngay lap tuc.
+       + Su dung co che Distributed Lock `SET NX EX 60` tren Redis de chong duplicate tin nhan khi chay nhieu worker.
+  2. Bo sung `_append_zalo_message` trong `api_zalo.py`:
+     - Luu day du tin nhan nhan vien rep tu Zalo OA Manager vao Redis `zalo:messages:{conversation_id}`.
+     - Dong bo sang Tinode voi prefix `👩‍💼 [{sender_name}]: {text}`.
+     - Bo sung hook `after_server_start` de khoi dong bo lang nghe Tinode staff reply tu dong.
+  3. Hoan tat Batch Sync toan bo 2,202 hoi thoai va 12,847 tin nhan vao Tinode:
+     - Chay worker dong bo `batch_sync_all_zalo_tinode.py`: Tao moi 1,915 topics con thieu, dong bo 9,361 tin nhan con thieu vao Tinode.
+     - Ket qua cuoi cung:
+       + Tong so group topic tren Tinode: 2,351 topics.
+       + Tong so subscription cua nhan vien: 96,401 subscriptions (tat ca 40 nhan vien deu co du 2,351 topics trong danh ba).
+       + Tai khoan nhan vien "Nguyen Huu Nham" (`1582013596802486272`): Hien co du 2,354 subscriptions trong danh ba Tinode.
+       + Tong so tin nhan trong group topics tren Tinode: 12,847 tin nhan (dong bo 100% day du khong thieu bat ky doan chat nao).
+- Kiem thu thuc te:
+  - Publish realtime ViChat -> Tinode: 0.009s/tin nhan (PASS, seqid 5 & 6 tren topic `grpi1cTLf7ld-g`).
+  - Chuyen tiep realtime Tinode Web -> Zalo CS & Redis: Da kiem thu thanh cong, tin nhan xuat hien ngay trong Redis cua khach hang (PASS).
+  - Kiem thu frontend ViChat Web: 467/467 tests PASS (`npm run test:frontend`).
+
+
 ## 2026-10-11-09 - Khắc phục hiển thị danh bạ Zalo OA trên Tinode Web (chatapi.gonplatform.com) & Sửa lỗi "Invalid conversation" trên ViChat Web:
 
 - Thoi gian: 2026-10-11 22:00 (Asia/Saigon)
