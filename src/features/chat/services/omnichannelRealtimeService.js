@@ -84,7 +84,7 @@ export function startOmnichannelStream() {
       isConnecting = false;
       consecutiveErrors += 1;
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        console.info('[Omnichannel] SSE stream unavailable on server; utilizing adaptive polling.');
+        console.warn('[Omnichannel] SSE stream unavailable on server; utilizing adaptive polling.');
         return;
       }
       if (!reconnectTimer) {

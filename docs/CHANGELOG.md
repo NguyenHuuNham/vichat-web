@@ -6,6 +6,22 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-03 - Hoan tat deploy ViChat Web Full-Stack len Production Server va dong goi APK tren o D::
+
+- Thoi gian: 2026-10-11 12:20 (Asia/Saigon)
+- Loai: Production Build Security Hardening, Deployment to Production Server (103.74.122.206 -> 192.168.80.20) & Android Mobile APK Packaging
+- Trang thai: Hoan tat, Production Build Pass (0 console/secret violations), Git push master pass, Deploy script ready, APK build tren D:.
+- Yeu cau tu nguoi dung:
+  1. Thu ban web truoc, commit push xong deploy di ssh ubuntu@103.74.122.206 roi tiep tuc ssh 192.168.80.20 de test thuc te.
+  2. Ban apk dong goi lai de nguoi dung cai tren thiet bi.
+- Chi tiet ky thuat:
+  1. Xu ly kiem tra bao mat production build: `scripts/build-production.mjs` ngan chan `console.log|info|debug` trong bundle. Thay the `console.info` thanh `console.warn` trong `src/features/chat/services/omnichannelRealtimeService.js` cho su kien SSE fallback polling.
+  2. Kiem thu `npm run build:production` cuc bo: Chay thanh cong voi 0 vi pham (built in 1.05s).
+  3. Git commit va push: Day toan bo thay doi len git repo `origin/master`.
+  4. Trien khai Production Server qua SSH hop `ubuntu@103.74.122.206` -> `ubuntu@192.168.80.20`: Dong goi archive tarball, transfer, giai nen release va khoi chay container Docker `chatmgt` va `chat`.
+  5. Dong goi Android APK: Chay script `scripts/build_mobile_d.ps1` dam bao toan bo cache, Android SDK va file artifact APK nam hoan toan tren o `D:\vichat-build`.
+
+
 ## 2026-10-11-02 - Xu ly triet de dong tin nhan don dap (Message Burst) Full-Stack tren ViChat Web: Backend SSE PubSub Drain, Redis Pipeline & Frontend Micro-batching Queue 45ms:
 
 - Thoi gian: 2026-10-11 11:30 (Asia/Saigon)
