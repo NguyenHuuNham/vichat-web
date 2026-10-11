@@ -6,6 +6,35 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-07 - Triển khai (Deploy) và Commit thành công Chatbot Server UpgoBot (192.168.80.154 qua jump host 103.74.122.218): Đồng bộ hai chiều tin nhắn Zalo OA (Bot AI trả lời & Nhân viên CSKH) về ViChat:
+
+- Thoi gian: 2026-10-11 19:45 (Asia/Saigon)
+- Loai: Production Deployment | Remote Service Upgrade | Git Commit & Branch Sync | Unit Test Verification
+- Trang thai: Hoan tat 100%, Git main & rocketchat da push, Server 192.168.80.154 da cap nhat va chay active, 9/9 tests PASS tren server production.
+- Yeu cau tu nguoi dung:
+  - "D:\CÔNG_VIỆC\chatbot sever chatbot đây deploy comit đi UpgoBot: ssh ubuntu@103.74.122.218 xong ssh 192.168.80.154"
+- Cac buoc trien khai va quyet dinh ky thuat:
+  1. Ket noi Server qua Jump Host:
+     - Su dung SSH key `C:\Users\Admin\.ssh\id_rsa` ket noi hop le toi jump host `ubuntu@103.74.122.218`.
+     - Tu `103.74.122.218` ket noi toi node dich `ubuntu@192.168.80.154` (production02, thu muc `/opt/deploy/UpgoBOT/repo`).
+  2. Dong bo Code va Git Repository:
+     - Nang cap `application/controllers/zalo/vichat_bridge.py`: Tich hop day du cac tien ich dong bo ViChat, co tiep quan nhan vien (`is_takeover_active`, `set_takeover_status`, `clear_takeover_status`), va tu dong phat hien y dinh gap tu van vien (`human_request_intent`).
+     - Nang cap `application/controllers/zalo/__init__.py`:
+       * Trong `send_text_message`: Sau khi goi Zalo OpenAPI thanh cong, tu dong post `oa_send_text` (kem `is_bot: True`, `sender_name: "Chatbot AI"`) ve ViChat Webhook `https://chatmgt.gonplatform.com/api/v1/zalo/webhook`.
+       * Trong `send_button_message`: Tu dong dong bo tin nhan card/button sang ViChat.
+       * Trong `handle_bot_request`: Tiep nhan cac su kien `oa_send_*` (tin nhan do nhan vien chat truc tiep tren Zalo OA manager `oa.zalo.me/chat`) va chuyen tiep sang ViChat.
+       * Them endpoint tiep nhan tin nhan va su kien tu ViChat: `/api/v1/zalo/vichat/events` va `/api/v1/zalo/message/send`.
+     - Tao bo test tu dong `tests/zalo/test_vichat_zalo_sync.py` tuong thich Python 3.7 (`IsolatedAsyncioTestCase` shim).
+     - Commit va Push Git:
+       * Branch `main`: Commit `c863225` da duoc push len `origin/main` (`https://git.gonstack.com/upgo/chatbot.git`).
+       * Tren server `192.168.80.154`: Cap nhat HEAD ve `c863225` sach se, bao toan 100% cac file cau hinh moi truong tren server (`application/config/__init__.py`).
+       * Branch `rocketchat`: Commit `94bf4a2` da duoc push len `origin/rocketchat`.
+  3. Kiem thu va Khoi dong lai dich vu tren Server:
+     - Chay test tren Python 3.7 cua UpgoBOT: 9/9 tests PASS trong 0.015s.
+     - Restart service: `sudo systemctl restart upgo-bot`.
+     - Xac minh service: `upgo-bot.service` active (running), worker 9779 va 9780 chay binh thuong.
+     - Live traffic: Chatbot tiep nhan webhook va dong bo 2 chieu thanh cong sang ViChat (`POST /api/v1/zalo/webhook 200`).
+
 ## 2026-10-11-06 - Điều tra nguyên nhân gốc rễ và hoàn thiện luồng đồng bộ tin nhắn hai chiều Zalo OA (Bot AI & Nhân viên CSKH) sang ViChat Omnichannel:
 
 - Thoi gian: 2026-10-11 18:20 (Asia/Saigon)
