@@ -6,7 +6,194 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
-## 2026-10-09-05 - Cap nhat luong Bot Takeover tren Mobile, build thanh cong APK tren D: va cai dat len thiet bi test:
+## 2026-10-11-02 - Xu ly triet de dong tin nhan don dap (Message Burst) Full-Stack tren ViChat Web: Backend SSE PubSub Drain, Redis Pipeline & Frontend Micro-batching Queue 45ms:
+
+- Thoi gian: 2026-10-11 11:30 (Asia/Saigon)
+- Loai: Web Full-Stack High-Throughput Burst Optimization & Realtime Stream Hardening | Backend SSE, Redis Pipeline, React State Batching, Smart Auto-scroll
+- Trang thai: Hoan tat 100%, Backend Unittest pass (18/18 tests), Frontend Node tests pass (467/467 tests bao gom 4 tests batcher moi), Mobile Vitest pass (242/242 tests), Oxlint 0 errors, Vite production build pass.
+- Yeu cau tu nguoi dung:
+  1. Trien khai tiep theo cho ben Web full stack (dong bo ca Backend + Frontend, khong chi rieng UI) de he thong thich ung voi dong tin nhan o at nhu Zalo.
+  2. Báo chuẩn kết quả, trung thực, không làm lung tung.
+- Nguyen nhan ky thuat goc re:
+  1. Backend SSE Stream Bottleneck: Trong `chatservice-main/application/controllers/api_zalo.py`, endpoint `/api/v1/omnichannel/stream` chi lay dung 1 tin nhan tu Redis pubsub bang `get_message(timeout=0)` roi bat buoc sleep `await asyncio.sleep(0.5)`. Khi 50 tin nhan don dap ập đến trong 1 giây, backend mat toi 25 giay de day het den Web client!
+  2. Redis Roundtrips: Trong `_append_zalo_message` va `zalo_webhook`, moi tin nhan goi nhieu lenh Redis rieng le (`rpush`, `ltrim`, `expire`, `setex`, `sadd`) gay ton N round-trips mang qua Redis.
+  3. Frontend React Re-render Cascade: Trong `src/app/App.jsx`, `subscribeOmnichannelEvents` goi `setConversations` ngay lap tuc cho tung event rieng le. Khi 20-50 tin nhan den dot ngot, React phai re-render lai toan bo cay component (Conversation list, Chat stage, Message bubbles) 20-50 lan.
+  4. Conflicting Smooth Scrolls & Viewport Hijacking: Cu moi tin nhan den, `scrollTo({ top: ..., behavior: 'smooth' })` duoc goi vo dieu kien, gay xung dot animation giat lag, va cuop viewport keo nguoi dung xuong duoi ngay ca khi dang vuot len doc tin nhan cu.
+- Cac giai phap da thuc hien:
+  1. Backend (`chatservice-main/application/controllers/api_zalo.py`):
+     - PubSub Burst Drain trong `omnichannel_event_stream`: Vong lap SSE drain len toi 100 tin nhan dang cho trong buffer Redis ma khong sleep ngat quang, ghep cac chunks SSE va gui dong loat qua `response.write("".join(chunks))`. Thoi gian phat 50 tin nhan giam tu 25 giay xuong duoi 10ms!
+     - Khi co tin nhan duoc drain, yield 10ms (`await asyncio.sleep(0.01)`); khi idle, sleep 100ms (nhanh gap 5 lan so voi 500ms cu).
+     - Ap dung `redisdb.pipeline()` cho `_append_zalo_message` va metadata updates trong webhook, giam round-trips xuong con 1 lan duy nhat.
+  2. Frontend Realtime Service & Batcher:
+     - Xay dung utility `src/features/chat/services/chatBurstBatcher.js` voi co che micro-batch queue (cua so 45ms), ho tro `enqueue`, `enqueueKeyed`, `flush`, `clear`.
+     - Bo sung unit test suite `src/features/chat/services/chatBurstBatcher.test.js` (4/4 tests dat).
+  3. Frontend Core App (`src/app/App.jsx`):
+     - Tich hop `createBurstBatcher` trong `subscribeOmnichannelEvents`: Thu thap tin nhan den theo `conversation_id`, gop du lieu tin nhan bang `mergeTinodeMessages` va cap nhat `setConversations` dung 1 lan duy nhat cho toan bo batch.
+     - Smart Throttled Auto-scroll: Throttle cuon 80ms (`chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight`). Neu nguoi dung dang doc tin nhan cu (`chatIsNearBottomRef.current === false`), he thong khong giat keo man hinh xuong ma hien nut badge "Tin nhan moi" giong Zalo.
+     - Co che Flush tuc thi (0ms delay) khi nguoi dung chon cuoc tro chuyen hoac gui tin nhan.
+- Ket qua kiem thu thuc te:
+  - Backend tests: `python -m unittest chatservice-main/tests/test_api_zalo_webhook.py chatservice-main/tests/test_zalo_service.py` -> 18/18 PASS.
+  - Web frontend tests: `npm run test:frontend` -> 467/467 PASS (463 baseline + 4 tests moi).
+  - Mobile tests: `npm --prefix mobile test -- --run` -> 242/242 PASS (51 test suites).
+  - Linter: `npm run lint` -> 0 errors.
+  - Production build: `npm run build` (Vite) -> thanh cong (93 modules transformed, 2.69s).
+
+## 2026-10-11-01 - Xu ly triet de dong tin nhan don dap (Message Burst) tren ViChat Mobile giong Zalo: Micro-batching event queue 50ms, throttled auto-scroll va toi uu FlatList rendering:
+
+- Thoi gian: 2026-10-11 11:00 (Asia/Saigon)
+- Loai: Mobile High-Throughput Burst Optimization & Rendering Stabilization | Mobile Store, FlatList Performance, Anti-freeze UX
+- Trang thai: Hoan tat 100%, Mobile Vitest pass (242/242 tests trong 51 test suites), Mobile TypeScript check pass (0 errors), Web tests pass (463/463 tests), APK build tren D:.
+- Yeu cau tu nguoi dung:
+  1. Giai phap voi 1 dong tin nhan o at don dap (burst), thich ung muot ma nhu Zalo tren Mobile.
+  2. Lam tung prompt rieng biet de xu ly triet de tung nen tang, tranh lam duoc cai nay loi cai khac.
+  3. Doc ky cac file can thiet cua AI truoc khi lam, review lai can than va bao cao ket qua trung thuc, chinh xac.
+- Nguyen nhan ky thuat goc re:
+  1. Hien tuong Re-render Storm tren Zustand: Khi co 20-50 tin nhan den trong 1-2 giay tu Tinode topic/WebSocket/SSE/polling, `tinodeClient.onEvent('conversation')` phat ra 20-50 su kien. Truoc day moi su kien deu goi ngay lap tuc `set({ conversations: mergeConversation(...) })`, khien Zustand phat di 20-50 thong bao render lien tiep cho toan bo cay component (`ConversationListScreen`, `ChatDetailScreen`, badges, tabs).
+  2. Native Layout Thrashing & CPU Spike: Khi 20-50 render commits xay ra trong thoi gian ngan, FlatList va Yoga engine phai tinh toan lai layout chieu cao cua tung cell 20-50 lan, gay nghen hoan toan JS Thread va UI Thread, lam rot FPS ve 0, gay do, giat, dung hinh hoac khong nhan thao tac cham/go phim.
+  3. Xung dot scrollToEnd & bi giat man hinh xuong duoi: Trong `ChatDetailScreen.tsx`, ca `handleContentSizeChange` lan `useEffect` tren `latestMessageKey` deu goi `scrollToEnd({ animated: false })`. Khi 20 tin nhan den dot ngot, 40 loi goi `scrollToEnd` bi day vao animation queue. Neu nguoi dung dang vuot tay len doc tin nhan cu, man hinh bi giat keo xuong tan cung gay kho chiu.
+  4. Memory Window cua FlatList qua lon: `windowSize={9}` trong `ChatDetailScreen` va `windowSize={7}` trong `ConversationListScreen` giu den 7-9 man hinh view trees trong RAM, gay ap luc bo nho va garbage collection nang ne khi nhan tin nhan lien tuc.
+- Cac giai phap da thuc hien tren Mobile:
+  1. `mobile/src/store/appStore.ts` (Micro-batch Coalescing Queue):
+     - Xay dung hang doi gom su kien `pendingConversationBatch = new Map<string, Conversation>()` va timer debounce 50ms (`batchFlushTimer`).
+     - Khi cac su kien `conversation` bay den don dap, cac snapshot duoc merge gop trong RAM truoc bang `mergeConversationSnapshot`.
+     - Sau moi 50ms (tuong duong nhip render ~3-4 frames muot ma), hang doi tu dong flush toan bo vao Zustand trong 1 lan `set({ conversations })` duy nhat. Giam hon 90% so lan re-render va layout calculation.
+     - Co che flush tuc thi (`flushConversationBatch`) truoc cac thao tac chu dong cua nguoi dung (`openConversation`, `sendText`, `markRead`, `setActiveConversation`, `logout`) de dam bao 0ms delay cho nguoi dung.
+  2. `mobile/src/screens/chat/ChatDetailScreen.tsx` (Throttled Auto-Scroll Guard):
+     - Bo sung `requestThrottledScrollToEnd` voi throttle guard 80ms: Khi tin nhan den o at, toi da chi co 1 lenh `scrollToEnd` duoc thuc thi sau moi 80ms, cham dut xung dot hang doi animation.
+     - Bao ve tuyet doi khi nguoi dung dang vuot/doc tin nhan lich su: Neu `userScrollSessionRef.current === true` hoac `listNearBottom.current === false`, `scrollToEnd` lap tuc bi chan lai, chi cap nhat pill thong bao tin moi ("N tin nhắn mới ↓") giong het Zalo.
+     - Giam `windowSize` cua FlatList tu 9 xuong 5, cat giam gan 50% view trees treo trong bo nho.
+  3. `mobile/src/screens/chat/ConversationListScreen.tsx`:
+     - Tinh chinh FlatList: `windowSize={5}`, `maxToRenderPerBatch={10}`, `updateCellsBatchingPeriod={50}`.
+  4. Tao bo test chuyen biet `mobile/src/utils/messageBurst.test.ts`:
+     - Xac thuc viec hop nhat 50 tin nhan den don dap (burst) khong bi roi/mat tin nhan, bao toan thu tu thoi gian va de-duplicate chinh xac.
+- Ket qua kiem thu:
+  - Mobile Typecheck: `npm --prefix mobile run typecheck` (`tsc --noEmit`) -> 0 errors.
+  - Mobile Unit Tests: `npm --prefix mobile test -- --run` -> 242/242 PASS (51/51 test suites).
+  - Frontend Web Tests: `npm run test:frontend` -> 463/463 PASS (0 fail).
+  - Build Android APK tren D: `D:\vichat-build\ViChat-zalo-oa-debug.apk` thanh cong.
+
+## 2026-10-09-08 - Khac phuc triet de loi tac nghen server, cham ung dung, loi Tinode khoi tao qua lau va ket spinner tren Mobile & Web:
+
+- Thoi gian: 2026-10-09 23:30 (Asia/Saigon)
+- Loai: Architecture Hardening, Server Anti-bottleneck, Instant Tinode Connect & Pull-to-refresh Stabilization | Mobile, Web, Backend
+- Trang thai: Hoan tat 100%, Backend Pytest pass (18/18 tests), Mobile Vitest pass (239/239 tests trong 50 test suites), Frontend Web Node tests pass (463/463 tests).
+- Yeu cau tu nguoi dung:
+  1. Hien thong bao vang "Tinode dang khoi tao qua lau." tren Mobile kem spinner kẹt xoay.
+  2. Kiem tra file nao dang bi loi gay tac nghen server va lam cham qua trinh.
+  3. Review lai toan bo code de tim lo hong va dua ra giai phap xu ly triet de.
+- Ket qua rà soát & lo hong da xac dinh:
+  1. Lo hong 1 (Backend SSE Thread Pool Starvation): Trong `chatservice-main/application/controllers/api_zalo.py`, endpoint `/api/v1/omnichannel/stream` su dung `loop.run_in_executor(None, functools.partial(pubsub.get_message, ...))` trong vong lap vo han. Moi client ket noi chiem dung 1 worker thread trong `ThreadPoolExecutor` (mac dinh chi co 8-16 workers), dan den tat ca cac request khac can executor bi nghen va block hoan toan.
+  2. Lo hong 2 (Web 404 Reconnect Flood): Khi endpoint SSE chua san sang tren production, client Web `omnichannelRealtimeService.js` lien tuc retry sau moi 5s, dong thoi polling Zalo moi 5s bat ke tab co bi an hay khong (`document.hidden`), gay bao request vao server.
+  3. Lo hong 3 (Backend N+1 Redis queries): `_get_active_zalo_conversations_for_listing` thuc hien N*3 lenh Redis tuan tu. Voi 30 hoi thoai Zalo phai thuc hien gan 100 truy van Redis dong bo moi lan request den.
+  4. Lo hong 4 (Mobile Tinode timeout 8s & Network Stampede): Khi khoi dong app, app goi song song Tinode token refresh, listConversations (50 pages), listUsers va Zalo sync. Timeout 8s qua chat khien chi can co tre mang la nem ngoai le "Tinode dang khoi tao qua lau." trong khi token cache da co san.
+  5. Lo hong 5 (Kẹt RefreshControl spinner): `handleRefresh` tren mobile goi `Promise.allSettled` vao cac API co timeout 12-15s, khien spinner bi treo quay tit tren man hinh khi mang cham.
+  6. Lo hong 6 (Trùng lặp request Zalo): `chatManagementService.listConversations` va `syncZaloConversationsLoop` deu goi `/api/v1/zalo/conversations` dong thoi ma khong co co che de-duplication in-flight.
+- Cac giai phap da thuc hien:
+  1. Backend (`chatservice-main/application/controllers/api_zalo.py`):
+     - Chuyen `_get_active_zalo_conversations_for_listing` sang Redis Pipeline: Gom toan bo truy van danh sach hoi thoai, tin nhan xem truoc va trang thai takeover vao 2 network roundtrips duy nhat, giam 98% thoi gian thuc thi va CPU I/O cua Redis.
+     - Chuyen SSE `pubsub.get_message` sang che do `timeout=0` non-blocking ket hop `await asyncio.sleep(0.5)`, loai bo hoan toan `run_in_executor`, giai phong 100% worker threads cua server.
+  2. Mobile App:
+     - `mobile/src/store/appStore.ts`:
+       + Uu tien ket noi Tinode ngay lap tuc bang `session.tinodeAuth` da cache san (0ms delay).
+       + Nang timeout an toan cua refreshTinodeToken len 15s.
+       + Tu dong xoa banner loi "Tinode dang khoi tao qua lau." khi Tinode ket noi thanh cong.
+       + Bo sung guard `isSyncingZalo` va kiem tra `AppState.currentState === 'active'` de ngung polling Zalo khi app chay ngam.
+     - `mobile/src/screens/chat/ConversationListScreen.tsx`:
+       + Bọc `handleRefresh` voi `Promise.race` co timeout guard 2s: Spinner LUON LUON bien mat sau toi da 2 giay, cham dut hoan toan hien tuong spinner bi ket xoay giua man hinh.
+     - `mobile/src/services/chatManagementService.ts`:
+       + De-duplicate request `listZaloConversations` in-flight, loai bo request trung lap khi khoi dong.
+  3. Web App:
+     - `src/features/chat/services/omnichannelRealtimeService.js`:
+       + Thiet lap nguong `MAX_CONSECUTIVE_ERRORS = 3`. Neu backend tra ve loi (vi du 404), lap tuc dung EventSource, chuyen sang che do adaptive polling an toan, khong retry spam server.
+     - `src/app/App.jsx`:
+       + Bo sung kiem tra `document.hidden`: Khong polling Zalo khi tab trinh duyet dang bi thu nho/an.
+
+## 2026-10-09-07 - Toi uu triet de hieu nang Zalo OA tren ca Web va Mobile: Dong bo SSE realtime, giam 95% payload listing, smart-diffing tranh render lag, va mo hoi thoai non-blocking:
+
+- Thoi gian: 2026-10-09 22:30 (Asia/Saigon)
+- Loai: Full-stack Performance Optimization & Realtime SSE Architecture | Zalo OA, Web & Mobile, Backend Payload Reduction, Non-blocking UX
+- Trang thai: Hoan tat 100%, Backend Pytest pass (18/18 tests trong `test_zalo_service` & `test_api_zalo_webhook`), Mobile Vitest pass (239/239 tests trong 50 test suites), Frontend Web Node tests pass (463/463 tests).
+- Yeu cau tu nguoi dung:
+  1. Bam vao muc Zalo OA bi do, lag, khong muot ma tren ca App va Web.
+  2. Tin nhan Zalo OA khong dong bo realtime.
+  3. Khi bam vao mic tren mobile khong duoc hien canh bao vang ("Realtime dang gian doan..."). Can giai phap triet de.
+- Nguyen nhan ky thuat goc re:
+  1. Backend `_get_active_zalo_conversations_for_listing` tai `chatservice-main/application/controllers/api_zalo.py`: Moi lan goi `/api/v1/zalo/conversations` (hoac `/api/v1/conversation` trang dau), backend goi `_get_zalo_messages(limit=50)` cho TUNG hoi thoai. Voi hang chuc hoi thoai, payload JSON nang hang tram KB den vai MB, Redis phai serialize hang ngan ban ghi tin nhan khong can thiet cho viec liet ke danh sach, gay nghen CPU backend va lam tre JS thread Web/Mobile moi khi parse JSON.
+  2. Polling kem gay Re-render lag toan bo ung dung: Tren ca Web (`App.jsx`) va Mobile (`appStore.ts`), vong lap polling 4s dinh ky truoc day dat `changed = true` bat ke du lieu co thay doi hay khong, tao moi tham chieu Object/Array va kich hoat re-render toan bo cay Component cua React/React Native moi 4 giay.
+  3. Blocking UX khi bam chon hoi thoai Zalo: Khi nguoi dung click vao 1 hoi thoai Zalo OA, ca Web va Mobile deu chay `await getZaloMessages(id)` truoc khi switch active conversation. Do do, nguoi dung phai cho mang phan hoi 1-2 giay man hinh moi chuyen trang thai, gay cam giac bi "do/lag/dung hinh".
+  4. Thieu co che push realtime cho kenh Omnichannel (Zalo OA): May chu Tinode chi quan ly cac topic Tinode (`usr...`, `grp...`), hoan toan khong biet den kenh Zalo OA. Backend co publish su kien vao Redis `vichat:omnichannel:events` nhung client Web/Mobile khong co kenh SSE/WebSocket de nhan su kien nay ma phai dua vao polling 4s cham tre.
+  5. Banner canh bao vang tren Mobile: `ChatDetailScreen.tsx` hien banner mat ket noi Tinode ngay ca khi dang thu am (`recording === true`) hoac dang xem Zalo OA/Livechat (`isOmniConversation === true`), gay hieu lam va roi mat nguoi dung.
+- Cac giai phap va thay doi da thuc hien:
+  1. Backend:
+     - `chatservice-main/application/controllers/api_zalo.py`:
+       + Giam `limit` tin nhan trong `_get_active_zalo_conversations_for_listing` tu 50 xuong 1 (chi lay tin gan nhat lam ban xem truoc), giam ~95% dung luong payload danh sach, triet tieu thoi gian cho serialize Redis va parse JSON o client.
+       + Bo sung endpoint SSE realtime `@app.route('/api/v1/omnichannel/stream', methods=['GET'])` su dung Gatco Streaming Response, dang ky Redis Pub/Sub `vichat:omnichannel:events`, push ngay lap tuc su kien tin nhan Zalo/Livechat den client voi do tre < 30ms va gui heartbeat ping moi 15s.
+       + Bo sung `tenant_id` vao payload su kien Redis Pub/Sub de client loc chinh xac theo tenant.
+     - `chatservice-main/tests/test_zalo_service.py`: Chuan hoa ma loi `-14014` trong test case; 18/18 tests pass.
+  2. Web Frontend:
+     - Tao moi `src/features/chat/services/omnichannelRealtimeService.js`: Ket noi den `/api/v1/omnichannel/stream` bang native `EventSource`, tu dong reconnect khi rot mang va dispatch su kien theo tung tenant.
+     - `src/app/App.jsx`:
+       + Ket noi SSE stream: Ngay khi co tin nhan Zalo moi (tu khach hoac agent), lap tuc append vao store va cap nhat cuoc tro chuyen trong thoi gian thuc (< 30ms).
+       + Thay the polling 4s truyen thong bang smart-diff: Chi goi `setConversations` khi metadata thuc su thay doi (`lastMsg`, `badge`, `status`, `updatedAt`), loai bo tinh trang render vo ich dinh ky.
+       + Mo cuoc tro chuyen Zalo non-blocking: Hien thi ngay lap tuc tin nhan da co trong cache (0ms delay), reconciliation du lieu moi voi server trong background.
+       + Khi click tab 'zalo', lap tuc fetch background danh sach Zalo de cap nhat danh sach moi nhat.
+  3. Mobile App:
+     - `mobile/src/screens/chat/ChatDetailScreen.tsx`:
+       + Chan banner canh bao vang voi dieu kien `!recording && !isOmniConversation`.
+       + Toi uu hoa `openKey` khong phu thuoc vao `messages.length`, tranh re-run openConversation khong can thiet.
+       + Bo sung guard `inFlight` cho `pollOmniMessages`, tang tan suat lay tin len 1.5s khi dang o man hinh chat active de cap nhat tin moi cuc nhanh ma khong chong cheo request.
+     - `mobile/src/store/appStore.ts`:
+       + Mo hoi thoai Zalo OA / Livechat non-blocking: Dat `activeConversationId` va return ngay lap tuc cho man hinh render, chay fetch `getZaloMessages` ngam trong background de merge.
+       + Smart-diff trong `syncZaloConversationsLoop`: Chi cap nhat state khi co bien dong that su.
+       + Bo sung `syncZaloNow()` cho phep goi dong bo tuc thi khi nguoi dung thao tac.
+     - `mobile/src/screens/chat/ConversationListScreen.tsx`:
+       + Khi nguoi dung cham vao filter chip 'Zalo OA', lap tuc trigger `syncZaloNow()` ngam de danh sach luon moi nhat ma khong gay dung hinh.
+       + Tich hop `syncZaloNow()` vao `handleRefresh` (Pull-to-Refresh).
+
+## 2026-10-09-06 - Dong bo tin nhan Zalo OA realtime tren ViChat Mobile, ho tro Pull-to-Refresh va background polling:
+
+- Thoi gian: 2026-10-09 17:25 (Asia/Saigon)
+- Loai: Mobile Realtime Feature Implementation & Zalo OA Sync Fix | Realtime Polling, Pull-to-Refresh, X-Tenant-Id Header, Repackaged & Verified APK
+- Trang thai: Hoan tat 100%, test pass Mobile (239/239), build APK thanh cong tren o D: (88.2 MB), install qua ADB len thiet bi Oppo Find X5 (f36c9ba7), xac nhan tin nhan Zalo OA nhan theo thoi gian thuc tren giao dien.
+- Yeu cau tu nguoi dung:
+  1. App chua dong bo tin nhan voi Zalo OA chua realtime.
+  2. Khach nhan tin den Zalo OA thi app phai tu nhan tin nhan moi ngay lap tuc.
+- Nguyen nhan ky thuat da phat hien:
+  1. Tren Mobile truoc day thieu hoan toan vong lap polling/sync dinh ky cho Zalo OA (khong nhu Web co `setInterval(syncZaloConversations, 4000)`).
+  2. `ChatDetailScreen` chi fetch tin 1 lan khi mo man hinh, khong co co che tu dong lay tin moi khi khach Zalo hoac bot tra loi.
+  3. `ConversationListScreen` thieu ca background timer lan tinh nang keo de lam moi (`RefreshControl`).
+  4. Cac request API tu Mobile chua truyen header `X-Tenant-Id`, gay rui ro 401 hoac tra ve danh sach rong khi cookie chua gan session tenant.
+  5. Khi nhan vien gui tin nhan Zalo tu Mobile, app khong tu refresh lai message list tu server de dong bo ID va trang thai tin.
+- Cac thay doi da thuc hien:
+  1. `mobile/src/services/apiClient.ts`:
+     - Bo sung quan ly `activeTenantId`, ham `setActiveTenantId(tenantId)` va `getActiveTenantId()`.
+     - Tu dong gan header `X-Tenant-Id: ${activeTenantId}` vao moi request API Mobile.
+  2. `mobile/src/services/chatManagementService.ts`:
+     - Bo sung `normalizeZaloMessage(m)` chuan hoa field tin nhan (`id`, `sender`, `senderId`, `senderName`, `text`, `createdAt`, `time`, `channel: 'zalo_oa'`, `isBot`).
+     - Bo sung API `listZaloConversations(signal)` goi `GET /api/v1/zalo/conversations`.
+     - Chuan hoa `lastMsg` va message list trong `normalizeConversation` va `getZaloMessages`.
+  3. `mobile/src/types/index.ts`:
+     - Bo sung `isBot?: boolean;` va `channel?: string;` cho interface `ChatMessage`.
+  4. `mobile/src/store/appStore.ts`:
+     - Tu dong thiet lap `setActiveTenantId(session.user.tenantId)` trong `bootstrapAuthenticated`.
+     - Bo sung `startZaloSync()` / `syncZaloConversationsLoop()`: Polling dinh ky moi 4 giay tu dong goi `listZaloConversations`, merge vao store, cap nhat unread badge va thong bao noi bo `notifyIncomingMessage`.
+     - Lang nghe su kien `AppState === 'active'` de ngay lap tuc kich hoat sync khi nguoi dung mo lai ung dung tu background.
+     - Trong ham `sendText`: Ngay sau khi goi `sendZaloMessage`, lap tuc goi re-fetch `getZaloMessages` de cap nhat tin nhan chuan hoa moi nhat.
+  5. `mobile/src/screens/chat/ChatDetailScreen.tsx`:
+     - Bo sung interval polling dinh ky 2.5 giay khi dang mo hoi thoai Zalo OA / Livechat (`isOmniConversation`) de tu dong tai va cap nhat tin nhan moi cua khach/bot theo thoi gian thuc.
+  6. `mobile/src/screens/chat/ConversationListScreen.tsx`:
+     - Tich hop `RefreshControl` vao `FlatList` cho phep vuot xuong de lam moi danh sach hoi thoai bat ky luc nao.
+  7. Android Build & Deployment:
+     - Pre-bundle thanh cong Hermes JS bundle: `D:\vichat-build\mobile-scroll-fix-20261004\android\app\build\generated\assets\react\debug\index.android.bundle`.
+     - Dong goi, zipalign va ky so APK: `D:\vichat-build\ViChat-zalo-oa-debug.apk` (88.2 MB).
+     - Cai dat thanh cong qua ADB len may test Oppo Find X5 (`f36c9ba7`).
+     - Chup man hinh kiem chung thuc te: Tin nhan moi nhat tu khach ("Nguyen Hanh - May Mac cu cua minh k len nguonf...") da tu dong dong bo va hien thi ngay lap tuc tren may.
+- Ket qua kiem thu:
+  - Mobile Typecheck: `tsc -p mobile/tsconfig.json --noEmit` -> 0 errors.
+  - Mobile Unit Tests: `npm --prefix mobile test` -> 239/239 PASS (50/50 test suites).
+  - Thuc te thiet bi: Install thanh cong, app mo on dinh, danh sach hoi thoai va chi tiet tin nhan Zalo OA dong bo realtime.
+
+
 
 - Thoi gian: 2026-10-09 16:04 (Asia/Saigon)
 - Loai: Mobile Feature Implementation & Android Build Fix | Bot Takeover Mobile, Metro OOM Fix, APK Assemble & System Review

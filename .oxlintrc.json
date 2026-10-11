@@ -4,6 +4,9 @@
     "browser": true,
     "node": true
   },
+  "globals": {
+    "__DEV__": "readonly"
+  },
   "plugins": ["react", "oxc"],
   "rules": {
     "no-undef": "error",

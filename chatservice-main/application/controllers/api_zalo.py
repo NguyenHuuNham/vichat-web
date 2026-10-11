@@ -3,11 +3,13 @@ Handles inbound messages from Zalo OA, triggers Chatbot AI responses,
 and provides OAuth authorization flow for partners.
 """
 
+import asyncio
 from datetime import datetime
+import functools
 import json
 import logging
 import time
-from gatco.response import json as json_response, text as text_response
+from gatco.response import json as json_response, text as text_response, stream
 from sanic.response import redirect
 
 from application.database import redisdb
@@ -187,15 +189,22 @@ def _set_handover_pending(oa_id: str, sender_id: str, active: bool = True, ttl: 
 
 
 def _append_zalo_message(conversation_id: str, msg_payload: dict):
-    """Store message into the conversation's message history in Redis."""
+    """Store message into the conversation's message history in Redis with pipeline batching."""
     if not conversation_id or not msg_payload:
         return
     key = "zalo:messages:{}".format(conversation_id)
     if redisdb is not None:
         try:
-            redisdb.rpush(key, json.dumps(msg_payload))
-            redisdb.ltrim(key, -MAX_ZALO_HISTORY_PER_CONV, -1)
-            redisdb.expire(key, 86400 * 30)
+            if hasattr(redisdb, "pipeline"):
+                pipe = redisdb.pipeline()
+                pipe.rpush(key, json.dumps(msg_payload))
+                pipe.ltrim(key, -MAX_ZALO_HISTORY_PER_CONV, -1)
+                pipe.expire(key, 86400 * 30)
+                pipe.execute()
+            else:
+                redisdb.rpush(key, json.dumps(msg_payload))
+                redisdb.ltrim(key, -MAX_ZALO_HISTORY_PER_CONV, -1)
+                redisdb.expire(key, 86400 * 30)
         except Exception as exc:
             logger.warning("Failed to append Zalo message to Redis: %s", exc)
 
@@ -225,73 +234,135 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
     try:
         index_key = "zalo:conversations:index:{}".format(tenant_id)
         members = redisdb.smembers(index_key) or []
-        for raw_id in members:
-            conv_id = raw_id.decode("utf-8") if isinstance(raw_id, bytes) else raw_id
-            raw_data = redisdb.get("zalo:conversation:{}".format(conv_id))
-            if raw_data:
+        if not members:
+            return conversations
+
+        conv_ids = [m.decode("utf-8") if isinstance(m, bytes) else m for m in members]
+
+        # Use pipeline or direct get to reduce Redis network roundtrips from N to 1
+        raw_conv_list = []
+        if hasattr(redisdb, "pipeline"):
+            pipe = redisdb.pipeline()
+            for cid in conv_ids:
+                pipe.get("zalo:conversation:{}".format(cid))
+            raw_conv_list = pipe.execute()
+        else:
+            for cid in conv_ids:
+                raw_conv_list.append(redisdb.get("zalo:conversation:{}".format(cid)))
+
+        valid_items = []
+        for cid, raw_data in zip(conv_ids, raw_conv_list):
+            if not raw_data:
+                continue
+            try:
                 conv_obj = json.loads(raw_data.decode("utf-8") if isinstance(raw_data, bytes) else raw_data)
-                # Verify tenant matches
-                if conv_obj.get("tenant_id") and conv_obj.get("tenant_id") != tenant_id:
-                    continue
+            except Exception:
+                continue
+            if conv_obj.get("tenant_id") and conv_obj.get("tenant_id") != tenant_id:
+                continue
+            parts = cid.split(":")
+            oa_id = parts[1] if len(parts) >= 3 else ""
+            user_id = parts[2] if len(parts) >= 3 else ""
+            valid_items.append((cid, conv_obj, oa_id, user_id))
 
-                parts = conv_id.split(":")
-                oa_id = parts[1] if len(parts) >= 3 else ""
-                user_id = parts[2] if len(parts) >= 3 else ""
-                messages = _get_zalo_messages(conv_id, limit=50)
+        if not valid_items:
+            return conversations
 
-                oa_name = conv_obj.get("oa_name") or KNOWN_OA_NAME_MAP.get(oa_id) or "Zalo OA"
-                customer_name = conv_obj.get("name") or "Khách Zalo"
+        # Fetch latest messages (limit=1) and takeover flags in second pipeline
+        raw_msgs_list = []
+        raw_takeover_list = []
+        if hasattr(redisdb, "pipeline"):
+            pipe2 = redisdb.pipeline()
+            for cid, conv_obj, oa_id, user_id in valid_items:
+                pipe2.lrange("zalo:messages:{}".format(cid), -1, -1)
+                pipe2.get("zalo:takeover:{}:{}".format(oa_id, user_id))
+            results = pipe2.execute()
+            for i in range(len(valid_items)):
+                raw_msgs_list.append(results[i * 2] if (i * 2) < len(results) else [])
+                raw_takeover_list.append(results[i * 2 + 1] if (i * 2 + 1) < len(results) else None)
+        else:
+            for cid, conv_obj, oa_id, user_id in valid_items:
+                raw_msgs_list.append(_get_zalo_messages(cid, limit=1))
+                raw_takeover_list.append(_is_takeover_active(oa_id, user_id))
 
-                conversations.append({
-                    "id": conv_id,
-                    "managementId": conv_id,
-                    "tinodeTopic": conv_id,
-                    "name": customer_name,
-                    "oa_id": conv_obj.get("oa_id") or oa_id,
-                    "oa_name": oa_name,
-                    "tenant_id": tenant_id,
-                    "avatarUrl": conv_obj.get("avatar") or "",
-                    "avatar": conv_obj.get("avatar") or "",
-                    "isGroup": False,
-                    "is_group": False,
-                    "channel": "zalo_oa",
-                    "channelType": "zalo_oa",
-                    "sourceType": "zalo_oa",
-                    "lastMsg": conv_obj.get("last_message") or "",
-                    "lastMessage": conv_obj.get("last_message") or "",
-                    "updatedAt": conv_obj.get("updated_at") or time.time(),
-                    "updated_at": conv_obj.get("updated_at") or time.time(),
-                    "badge": 1 if conv_obj.get("needs_human") else 0,
-                    "status": conv_obj.get("status") or "bot_resolved",
-                    "needs_human": conv_obj.get("needs_human", False),
-                    "takeover_active": _is_takeover_active(oa_id, user_id),
-                    "assigned_agent_id": conv_obj.get("assigned_agent_id") or None,
-                    "assigned_agent_name": conv_obj.get("assigned_agent_name") or None,
-                    "workflow_stage": conv_obj.get("workflow_stage") or "new",
-                    "tags": conv_obj.get("tags") or [],
+        for i, (cid, conv_obj, oa_id, user_id) in enumerate(valid_items):
+            raw_msgs = raw_msgs_list[i] if i < len(raw_msgs_list) else []
+            messages = []
+            if raw_msgs:
+                for rm in raw_msgs:
+                    if isinstance(rm, dict):
+                        messages.append(rm)
+                    else:
+                        try:
+                            msg_dict = json.loads(rm.decode("utf-8") if isinstance(rm, bytes) else rm)
+                            messages.append(_format_zalo_message(msg_dict))
+                        except Exception:
+                            pass
+
+            takeover_raw = raw_takeover_list[i] if i < len(raw_takeover_list) else None
+            takeover_active = False
+            if isinstance(takeover_raw, bool):
+                takeover_active = takeover_raw
+            elif takeover_raw:
+                try:
+                    takeover_data = json.loads(takeover_raw.decode("utf-8") if isinstance(takeover_raw, bytes) else takeover_raw)
+                    takeover_active = bool(takeover_data.get("active", False))
+                except Exception:
+                    pass
+
+            oa_name = conv_obj.get("oa_name") or KNOWN_OA_NAME_MAP.get(oa_id) or "Zalo OA"
+            customer_name = conv_obj.get("name") or "Khách Zalo"
+
+            conversations.append({
+                "id": cid,
+                "managementId": cid,
+                "tinodeTopic": cid,
+                "name": customer_name,
+                "oa_id": conv_obj.get("oa_id") or oa_id,
+                "oa_name": oa_name,
+                "tenant_id": tenant_id,
+                "avatarUrl": conv_obj.get("avatar") or "",
+                "avatar": conv_obj.get("avatar") or "",
+                "isGroup": False,
+                "is_group": False,
+                "channel": "zalo_oa",
+                "channelType": "zalo_oa",
+                "sourceType": "zalo_oa",
+                "lastMsg": conv_obj.get("last_message") or "",
+                "lastMessage": conv_obj.get("last_message") or "",
+                "updatedAt": conv_obj.get("updated_at") or time.time(),
+                "updated_at": conv_obj.get("updated_at") or time.time(),
+                "badge": 1 if conv_obj.get("needs_human") else 0,
+                "status": conv_obj.get("status") or "bot_resolved",
+                "needs_human": conv_obj.get("needs_human", False),
+                "takeover_active": takeover_active,
+                "assigned_agent_id": conv_obj.get("assigned_agent_id") or None,
+                "assigned_agent_name": conv_obj.get("assigned_agent_name") or None,
+                "workflow_stage": conv_obj.get("workflow_stage") or "new",
+                "tags": conv_obj.get("tags") or [],
+                "phone": conv_obj.get("phone") or "",
+                "address": conv_obj.get("address") or "",
+                "gender": conv_obj.get("gender") or "",
+                "is_follower": conv_obj.get("is_follower", False),
+                "notes": conv_obj.get("notes") or [],
+                "customer_info": {
                     "phone": conv_obj.get("phone") or "",
                     "address": conv_obj.get("address") or "",
                     "gender": conv_obj.get("gender") or "",
                     "is_follower": conv_obj.get("is_follower", False),
+                    "tags": conv_obj.get("tags") or [],
                     "notes": conv_obj.get("notes") or [],
-                    "customer_info": {
-                        "phone": conv_obj.get("phone") or "",
-                        "address": conv_obj.get("address") or "",
-                        "gender": conv_obj.get("gender") or "",
-                        "is_follower": conv_obj.get("is_follower", False),
-                        "tags": conv_obj.get("tags") or [],
-                        "notes": conv_obj.get("notes") or [],
-                    },
-                    "messages": messages,
-                    "members": [
-                        {
-                            "id": user_id,
-                            "name": customer_name,
-                            "avatar": conv_obj.get("avatar") or "",
-                            "role": "MEMBER",
-                        }
-                    ],
-                })
+                },
+                "messages": messages,
+                "members": [
+                    {
+                        "id": user_id,
+                        "name": customer_name,
+                        "avatar": conv_obj.get("avatar") or "",
+                        "role": "MEMBER",
+                    }
+                ],
+            })
     except Exception as exc:
         logger.warning("Failed to get active Zalo conversations for listing: %s", exc)
     conversations.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
@@ -532,6 +603,7 @@ async def zalo_webhook(request):
                 "event": "message",
                 "channel": "zalo_oa",
                 "oa_id": oa_id,
+                "tenant_id": tenant_id,
                 "conversation_id": conversation_id,
                 "sender_id": sender_id,
                 "sender_name": customer_name,
@@ -576,9 +648,16 @@ async def zalo_webhook(request):
                 "needs_human": needs_human,
                 "updated_at": time.time(),
             }
-            redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_payload))
-            redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
-            redisdb.sadd("zalo:conversations:index", conversation_id)
+            if hasattr(redisdb, "pipeline"):
+                pipe_conv = redisdb.pipeline()
+                pipe_conv.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_payload))
+                pipe_conv.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
+                pipe_conv.sadd("zalo:conversations:index", conversation_id)
+                pipe_conv.execute()
+            else:
+                redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_payload))
+                redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
+                redisdb.sadd("zalo:conversations:index", conversation_id)
         except Exception as sync_exc:
             logger.warning("Failed to sync omnichannel conversation to Redis: %s", sync_exc)
 
@@ -797,6 +876,7 @@ async def zalo_send_message_manual(request):
                     "event": "agent_message",
                     "channel": "zalo_oa",
                     "oa_id": oa_id,
+                    "tenant_id": tenant_id,
                     "conversation_id": conversation_id,
                     "sender_id": user_id,
                     "agent_name": agent_name,
@@ -1104,6 +1184,97 @@ async def zalo_sync_profile(request):
         "conversation_id": conversation_id,
         "profile": profile,
     }, status=200)
+
+
+OMNICHANNEL_CHANNEL = "vichat:omnichannel:events"
+
+
+def _omnichannel_sse_chunk(event_name: str, payload: dict) -> str:
+    return "event: {}\ndata: {}\n\n".format(event_name, json.dumps(payload, ensure_ascii=False))
+
+
+@app.route("/api/v1/omnichannel/stream", methods=["GET"])
+async def omnichannel_event_stream(request):
+    """Realtime Server-Sent Events (SSE) stream bridging Redis Pub/Sub to Web & Mobile clients."""
+    tenant_id = _extract_request_tenant(request)
+    if not tenant_id:
+        return json_response({"error": "Unauthorized: Tenant identification required"}, status=401)
+
+    async def streaming_fn(response):
+        loop = asyncio.get_event_loop()
+        pubsub = None
+        try:
+            if redisdb is not None:
+                pubsub = await loop.run_in_executor(None, functools.partial(redisdb.pubsub))
+                await loop.run_in_executor(None, functools.partial(pubsub.subscribe, OMNICHANNEL_CHANNEL))
+
+            # Send initial connected handshake
+            await response.write(_omnichannel_sse_chunk("connected", {
+                "status": "connected",
+                "tenant_id": tenant_id,
+                "timestamp": time.time(),
+            }))
+
+            last_ping_at = loop.time()
+
+            while True:
+                drained_messages = []
+                if pubsub is not None:
+                    try:
+                        # Drain up to 100 pending messages from Redis pubsub buffer without sleeping
+                        for _ in range(100):
+                            msg = pubsub.get_message(ignore_subscribe_messages=True, timeout=0)
+                            if not msg:
+                                break
+                            drained_messages.append(msg)
+                    except Exception as err:
+                        logger.warning("Error fetching from pubsub: %s", err)
+
+                if drained_messages:
+                    chunks = []
+                    for message in drained_messages:
+                        if message and message.get("data"):
+                            raw_data = message.get("data")
+                            if isinstance(raw_data, bytes):
+                                raw_data = raw_data.decode("utf-8")
+                            try:
+                                payload = json.loads(raw_data) if isinstance(raw_data, str) else raw_data
+                                event_tenant = payload.get("tenant_id")
+                                if not event_tenant or event_tenant == tenant_id:
+                                    event_type = str(payload.get("event") or "message")
+                                    chunks.append(_omnichannel_sse_chunk(event_type, payload))
+                            except Exception as parse_err:
+                                logger.warning("Failed to parse omnichannel stream message: %s", parse_err)
+                    if chunks:
+                        await response.write("".join(chunks))
+                    # Short yield to allow other async coroutines to execute during high-volume bursts
+                    await asyncio.sleep(0.01)
+                else:
+                    # Low-latency idle sleep when no pending messages
+                    await asyncio.sleep(0.1)
+
+                if loop.time() - last_ping_at >= 15:
+                    await response.write(": keep-alive\n\n")
+                    last_ping_at = loop.time()
+        except Exception:
+            return
+        finally:
+            if pubsub is not None:
+                try:
+                    await loop.run_in_executor(None, pubsub.close)
+                except Exception:
+                    pass
+
+    return stream(
+        streaming_fn,
+        content_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 
 

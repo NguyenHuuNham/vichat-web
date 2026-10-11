@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Bot, ChevronDown, MessageSquarePlus, QrCode, Search, X } from 'lucide-react-native';
@@ -53,8 +53,33 @@ export function ConversationListScreen({ navigation }: Props) {
   const muteConversation = useAppStore(state => state.muteConversation);
   const deleteConversation = useAppStore(state => state.deleteConversation);
   const clearError = useAppStore(state => state.clearError);
+  const refreshData = useAppStore(state => state.refreshData);
+  const syncZaloNow = useAppStore(state => state.syncZaloNow);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const refreshPromise = Promise.allSettled([
+        refreshData(),
+        syncZaloNow(),
+      ]);
+      const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
+      await Promise.race([refreshPromise, timeoutPromise]);
+    } catch {
+      // Ignore error to ensure spinner always hides
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData, syncZaloNow]);
   const [filter, setFilter] = useState<FilterKey>('all');
+  const handleFilterChange = useCallback((newFilter: FilterKey) => {
+    setFilter(newFilter);
+    if (newFilter === 'zalo') {
+      void syncZaloNow();
+    }
+  }, [syncZaloNow]);
   const [showSearch, setShowSearch] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState<DeleteRequest | null>(null);
@@ -222,7 +247,7 @@ export function ConversationListScreen({ navigation }: Props) {
           contentContainerStyle={styles.filtersScrollContent}
         >
           {filters.map(item => (
-            <Pressable key={item.key} onPress={() => setFilter(item.key)} style={[styles.filterChip, filter === item.key && styles.filterChipActive]}>
+            <Pressable key={item.key} onPress={() => handleFilterChange(item.key)} style={[styles.filterChip, filter === item.key && styles.filterChipActive]}>
               <Text style={[styles.filterText, filter === item.key && styles.filterTextActive]}>{t(item.label)}</Text>
             </Pressable>
           ))}
@@ -281,9 +306,9 @@ export function ConversationListScreen({ navigation }: Props) {
         extraData={selectedZaloBotId}
         keyExtractor={item => item.id}
         initialNumToRender={12}
-        maxToRenderPerBatch={8}
+        maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
-        windowSize={7}
+        windowSize={5}
         removeClippedSubviews={Platform.OS === 'android'}
         renderItem={({ item }) => (
           <ConversationRow
@@ -316,6 +341,14 @@ export function ConversationListScreen({ navigation }: Props) {
         contentContainerStyle={filtered.length ? styles.list : styles.emptyList}
         ListEmptyComponent={<EmptyState icon={MessageCircleMore} title={query || filter !== 'all' ? t('Không tìm thấy cuộc trò chuyện') : t('Chưa có cuộc trò chuyện')} description={query || filter !== 'all' ? t('Thử đổi bộ lọc hoặc tìm bằng tên đồng nghiệp, nhóm.') : t('Mở Danh bạ để bắt đầu nhắn tin với đồng đội.')} />}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.accent}
+            colors={[palette.accent]}
+          />
+        }
       />
 
       <ConfirmDialog

@@ -22,9 +22,12 @@ if ($LASTEXITCODE -ge 8) {
     exit $LASTEXITCODE
 }
 
-# Xoa APK cu truoc khi build de dam bao chi nhan APK moi
+# Xoa APK cu va incremental packaging cache de dam bao clean package
+$stagingDir = "D:\vichat-build\mobile-scroll-fix-20261004"
 if (Test-Path $builtApk) { Remove-Item -Force $builtApk }
 if (Test-Path $targetApk) { Remove-Item -Force $targetApk }
+$incPkg = "$stagingDir\android\app\build\intermediates\incremental\packageDebug"
+if (Test-Path $incPkg) { Remove-Item -Recurse -Force $incPkg -ErrorAction SilentlyContinue }
 
 $env:CMAKE_BUILD_PARALLEL_LEVEL = "1"
 $env:NODE_OPTIONS = "--max-old-space-size=4096"
@@ -35,16 +38,21 @@ New-Item -ItemType Directory -Path "$stagingDir\android\app\build\generated\asse
 New-Item -ItemType Directory -Path "$stagingDir\android\app\build\generated\res\react\debug" -Force | Out-Null
 New-Item -ItemType Directory -Path "$stagingDir\android\app\build\intermediates\sourcemaps\react\debug" -Force | Out-Null
 
-& node "$stagingDir\node_modules\expo\node_modules\@expo\cli\build\bin\cli" export:embed `
-    --platform android --dev false --reset-cache --entry-file index.ts `
-    --bundle-output "$stagingDir\android\app\build\generated\assets\react\debug\index.android.bundle" `
-    --assets-dest "$stagingDir\android\app\build\generated\res\react\debug" `
-    --sourcemap-output "$stagingDir\android\app\build\intermediates\sourcemaps\react\debug\index.android.bundle.packager.map" `
-    --minify false --max-workers 1
+Push-Location $stagingDir
+try {
+    & node "$stagingDir\node_modules\expo\node_modules\@expo\cli\build\bin\cli" export:embed `
+        --platform android --dev false --reset-cache --entry-file index.ts `
+        --bundle-output "$stagingDir\android\app\build\generated\assets\react\debug\index.android.bundle" `
+        --assets-dest "$stagingDir\android\app\build\generated\res\react\debug" `
+        --sourcemap-output "$stagingDir\android\app\build\intermediates\sourcemaps\react\debug\index.android.bundle.packager.map" `
+        --minify false --max-workers 1
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Prebundling failed with exit code $LASTEXITCODE"
-    exit $LASTEXITCODE
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Prebundling failed with exit code $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+} finally {
+    Pop-Location
 }
 
 Set-Location "$stagingDir\android"

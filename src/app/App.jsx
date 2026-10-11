@@ -19,6 +19,12 @@ import {
   managementAuthClient,
 } from '../features/chat/services/chatManagementService';
 import {
+  startOmnichannelStream,
+  stopOmnichannelStream,
+  subscribeOmnichannelEvents,
+} from '../features/chat/services/omnichannelRealtimeService';
+import { createBurstBatcher } from '../features/chat/services/chatBurstBatcher';
+import {
   applyReceiptToMessages,
   conversationManagementMergePolicy,
   conversationDisplayName,
@@ -3643,6 +3649,8 @@ function App() {
   const chatMessagesEndRef = useRef(null);
   const chatMessagesRef = useRef(null);
   const chatIsNearBottomRef = useRef(true);
+  const omnichannelBatcherRef = useRef(null);
+  const lastAutoScrollTimeRef = useRef(0);
   const messageElementsRef = useRef(new Map());
   const messageHighlightTimerRef = useRef(null);
   const messageActionHideTimerRef = useRef(null);
@@ -4996,6 +5004,27 @@ function App() {
     setConversationListCategoryMenuOpen(false);
     setConversationListMoreMenuOpen(false);
     if (nextTab === 'all' || nextTab === 'groups' || nextTab === 'zalo' || nextTab === 'livechat' || nextTab === 'facebook' || nextTab === 'unread') resetConversationListFilters();
+    if (nextTab === 'zalo') {
+      void chatManagementService.listZaloConversations().then(zaloRooms => {
+        if (!Array.isArray(zaloRooms) || zaloRooms.length === 0) return;
+        setConversations(previous => {
+          const next = { ...previous };
+          let changed = false;
+          zaloRooms.forEach(zr => {
+            const existing = next[zr.id];
+            if (!existing || existing.lastMsg !== zr.lastMsg || existing.badge !== zr.badge) {
+              next[zr.id] = existing ? { ...existing, ...zr } : zr;
+              changed = true;
+            }
+          });
+          if (changed) {
+            conversationsRef.current = next;
+            return next;
+          }
+          return previous;
+        });
+      }).catch(() => {});
+    }
   };
 
   const toggleConversationListCategoryMenu = () => {
@@ -7717,6 +7746,7 @@ function App() {
   };
 
   const handleConversationSelect = async (id) => {
+    omnichannelBatcherRef.current?.flush();
     const rawRoom = conversationsRef.current[id] ?? conversations[id] ?? renderConversations[id];
     const room = rawRoom === null || rawRoom === undefined
       ? null
@@ -7761,35 +7791,31 @@ function App() {
       }
     }
     if (room?.channel === 'zalo_oa' || String(room?.id || '').startsWith('zalo:')) {
-      try {
-        const remoteMessages = await chatManagementService.getZaloMessages(id);
-        if (remoteMessages && remoteMessages.length > 0) {
-          setConversations(previous => {
-            const current = previous[id] || room;
-            return {
-              ...previous,
-              [id]: {
-                ...current,
-                messages: remoteMessages,
-                badge: 0,
-                unreadFromSeq: 0,
-              },
-            };
-          });
-        } else {
-          setConversations(previous => previous[id]
-            ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
-            : previous);
-        }
-      } catch {
-        setConversations(previous => previous[id]
-          ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
-          : previous);
-      }
+      // Instantly clear badge and show cached conversation without stalling UI
+      setConversations(previous => previous[id]
+        ? { ...previous, [id]: { ...previous[id], badge: 0, unreadFromSeq: 0 } }
+        : previous);
       if (openingConversationRef.current === String(id)) {
         openingConversationRef.current = '';
         if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
       }
+      // Reconcile full message history in the background smoothly
+      void chatManagementService.getZaloMessages(id).then(remoteMessages => {
+        if (!isCurrent() || !remoteMessages || remoteMessages.length === 0) return;
+        setConversations(previous => {
+          const current = previous[id] || room;
+          return {
+            ...previous,
+            [id]: {
+              ...current,
+              messages: remoteMessages,
+              badge: 0,
+              unreadFromSeq: 0,
+            },
+          };
+        });
+        if (shouldScrollToLatestOnOpen && isCurrent()) queueConversationLatestScroll(id, navigation);
+      }).catch(() => {});
       return;
     }
     if (room?.channel === 'livechat' || String(room?.id || '').startsWith('livechat:')) {
@@ -8838,7 +8864,176 @@ function App() {
     }
   }, [activeChat?.id, isSyncingZaloProfile]);
 
-  // Periodic polling for Zalo OA conversations & incoming message alerts
+  // Realtime Omnichannel Event Stream (SSE) for Zalo OA with Burst Micro-Batching
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    startOmnichannelStream();
+
+    const processBatch = (events) => {
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      const eventsByConv = new Map();
+      for (const event of events) {
+        const convId = event.conversation_id;
+        if (!convId) continue;
+        if (!eventsByConv.has(convId)) {
+          eventsByConv.set(convId, []);
+        }
+        eventsByConv.get(convId).push(event);
+      }
+
+      if (eventsByConv.size === 0) return;
+
+      let shouldScrollCurrentChat = false;
+
+      setConversations(previous => {
+        let changed = false;
+        const next = { ...previous };
+
+        eventsByConv.forEach((convEvents, convId) => {
+          const existingRoom = next[convId];
+          const firstEvent = convEvents[0];
+          if (!existingRoom && !firstEvent.customer_name && !firstEvent.sender_name) {
+            return;
+          }
+
+          const isCurrentChat = String(currentChatIdRef.current) === String(convId);
+          const allNewMessages = [];
+          let latestMsgText = '';
+          let latestTimestamp = Date.now();
+          let latestStatus = existingRoom?.status || 'bot_resolved';
+          let latestNeedsHuman = existingRoom?.needs_human;
+          let newIncomingCount = 0;
+
+          for (const ev of convEvents) {
+            const rawMsg = ev.customer_message || ev.message;
+            const isAgent = ev.type === 'agent_message' || ev.event === 'agent_message';
+            const eventTimestamp = ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now();
+            latestTimestamp = Math.max(latestTimestamp, eventTimestamp);
+
+            if (ev.status) latestStatus = ev.status;
+            if (typeof ev.needs_human === 'boolean') latestNeedsHuman = ev.needs_human;
+
+            if (rawMsg) {
+              latestMsgText = String(rawMsg);
+              allNewMessages.push({
+                id: ev.message_id || `zalo_${eventTimestamp}_${Math.random().toString(36).slice(2, 6)}`,
+                type: 'text',
+                text: String(rawMsg),
+                sender: isAgent ? 'outgoing' : 'incoming',
+                senderId: String(ev.sender_id || (isAgent ? 'agent' : 'customer')),
+                senderName: String(ev.sender_name || ev.agent_name || (isAgent ? 'Bạn' : 'Khách Zalo')),
+                avatar: ev.avatar || '',
+                createdAt: new Date(eventTimestamp).toISOString(),
+                time: new Date(eventTimestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+              });
+              if (!isAgent) newIncomingCount += 1;
+            }
+
+            if (ev.bot_reply) {
+              latestMsgText = String(ev.bot_reply);
+              allNewMessages.push({
+                id: `bot_${eventTimestamp + 100}_${Math.random().toString(36).slice(2, 6)}`,
+                type: 'text',
+                text: String(ev.bot_reply),
+                sender: 'incoming',
+                senderId: 'bot',
+                senderName: 'Chatbot AI',
+                isBot: true,
+                createdAt: new Date(eventTimestamp + 100).toISOString(),
+                time: new Date(eventTimestamp + 100).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+              });
+            }
+          }
+
+          if (allNewMessages.length === 0 && !firstEvent.status && !firstEvent.workflow_stage) {
+            return;
+          }
+
+          const mergedMessages = existingRoom?.messages
+            ? mergeTinodeMessages(existingRoom.messages, allNewMessages)
+            : allNewMessages;
+
+          const updatedRoom = {
+            ...(existingRoom || {
+              id: convId,
+              managementId: convId,
+              tinodeTopic: convId,
+              name: firstEvent.sender_name || 'Khách Zalo',
+              avatarUrl: firstEvent.avatar || '',
+              avatar: firstEvent.avatar || '',
+              channel: 'zalo_oa',
+              channelType: 'zalo_oa',
+              sourceType: 'zalo_oa',
+              oa_id: firstEvent.oa_id,
+              oa_name: firstEvent.oa_name || 'Zalo OA',
+            }),
+            messages: mergedMessages,
+            lastMsg: latestMsgText || existingRoom?.lastMsg || '',
+            updatedAt: new Date(latestTimestamp).toISOString(),
+            status: latestStatus,
+            needs_human: typeof latestNeedsHuman === 'boolean' ? latestNeedsHuman : existingRoom?.needs_human,
+            badge: isCurrentChat ? 0 : ((existingRoom?.badge || 0) + (isCurrentChat ? 0 : newIncomingCount)),
+          };
+
+          if (!isCurrentChat && allNewMessages.length > 0) {
+            const incomingMsgs = allNewMessages.filter(m => m.sender === 'incoming');
+            if (incomingMsgs.length > 0) {
+              showIncomingNotification(updatedRoom, incomingMsgs[incomingMsgs.length - 1], convId);
+            }
+          }
+
+          if (isCurrentChat && allNewMessages.length > 0) {
+            shouldScrollCurrentChat = true;
+          }
+
+          next[convId] = updatedRoom;
+          changed = true;
+        });
+
+        if (changed) {
+          conversationsRef.current = next;
+          return next;
+        }
+        return previous;
+      });
+
+      if (shouldScrollCurrentChat) {
+        const now = Date.now();
+        if (now - lastAutoScrollTimeRef.current >= 80) {
+          lastAutoScrollTimeRef.current = now;
+          if (chatIsNearBottomRef.current) {
+            window.requestAnimationFrame(() => {
+              if (chatMessagesRef.current) {
+                chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+              }
+            });
+          } else {
+            setShowLatestMessageButton(true);
+          }
+        }
+      }
+    };
+
+    const batcher = createBurstBatcher({
+      delay: 45,
+      onFlush: processBatch,
+    });
+    omnichannelBatcherRef.current = batcher;
+
+    const unsubscribe = subscribeOmnichannelEvents(event => {
+      batcher.enqueue(event);
+    });
+
+    return () => {
+      batcher.flush();
+      omnichannelBatcherRef.current = null;
+      unsubscribe();
+      stopOmnichannelStream();
+    };
+  }, [isLoggedIn, showIncomingNotification]);
+
+  // Periodic fallback synchronization for Zalo OA with smart diffing (zero redundant renders)
   useEffect(() => {
     if (!isLoggedIn) return undefined;
     const accountSession = accountSessionRef.current;
@@ -8846,6 +9041,7 @@ function App() {
 
     const syncZaloConversations = async () => {
       if (cancelled || accountSessionRef.current !== accountSession) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const zaloRooms = await chatManagementService.listZaloConversations();
         if (cancelled || accountSessionRef.current !== accountSession || !Array.isArray(zaloRooms) || zaloRooms.length === 0) return;
@@ -8857,32 +9053,46 @@ function App() {
           zaloRooms.forEach(zaloRoom => {
             const roomId = zaloRoom.id;
             const existingRoom = next[roomId];
+            const isCurrent = currentChatIdRef.current === roomId;
+            const targetBadge = isCurrent ? 0 : (zaloRoom.badge || (existingRoom ? existingRoom.badge : 0) || 0);
 
-            if (existingRoom && Array.isArray(zaloRoom.messages) && zaloRoom.messages.length > 0) {
-              const existingMessages = Array.isArray(existingRoom.messages) ? existingRoom.messages : [];
-              const existingMsgIds = new Set(existingMessages.map(m => m.id));
-              const newIncomingMsgs = zaloRoom.messages.filter(m => 
-                !existingMsgIds.has(m.id) && m.sender === 'incoming' && !m.isBot
-              );
+            const hasChanged = !existingRoom
+              || existingRoom.lastMsg !== zaloRoom.lastMsg
+              || existingRoom.badge !== targetBadge
+              || existingRoom.status !== zaloRoom.status
+              || existingRoom.needs_human !== zaloRoom.needs_human
+              || existingRoom.workflow_stage !== zaloRoom.workflow_stage
+              || (zaloRoom.updatedAt && existingRoom.updatedAt !== zaloRoom.updatedAt);
 
-              if (newIncomingMsgs.length > 0 && currentChatIdRef.current !== roomId) {
-                const latestNewMsg = newIncomingMsgs[newIncomingMsgs.length - 1];
-                showIncomingNotification(zaloRoom, latestNewMsg, roomId);
+            if (hasChanged) {
+              if (existingRoom && Array.isArray(zaloRoom.messages) && zaloRoom.messages.length > 0) {
+                const existingMessages = Array.isArray(existingRoom.messages) ? existingRoom.messages : [];
+                const existingMsgIds = new Set(existingMessages.map(m => m.id));
+                const newIncomingMsgs = zaloRoom.messages.filter(m => 
+                  !existingMsgIds.has(m.id) && m.sender === 'incoming' && !m.isBot
+                );
+
+                if (newIncomingMsgs.length > 0 && !isCurrent) {
+                  const latestNewMsg = newIncomingMsgs[newIncomingMsgs.length - 1];
+                  showIncomingNotification(zaloRoom, latestNewMsg, roomId);
+                }
               }
+
+              const mergedRoom = existingRoom ? {
+                ...existingRoom,
+                ...zaloRoom,
+                badge: targetBadge,
+                messages: zaloRoom.messages?.length
+                  ? mergeTinodeMessages(existingRoom.messages, zaloRoom.messages)
+                  : existingRoom.messages,
+              } : {
+                ...zaloRoom,
+                badge: targetBadge,
+              };
+
+              next[roomId] = mergedRoom;
+              changed = true;
             }
-
-            const mergedRoom = existingRoom ? {
-              ...existingRoom,
-              ...zaloRoom,
-              badge: currentChatIdRef.current === roomId ? 0 : (zaloRoom.badge || existingRoom.badge || 0),
-              messages: mergeTinodeMessages(existingRoom.messages, zaloRoom.messages),
-            } : {
-              ...zaloRoom,
-              badge: currentChatIdRef.current === roomId ? 0 : (zaloRoom.badge || 0),
-            };
-
-            next[roomId] = mergedRoom;
-            changed = true;
           });
 
           if (changed) {
@@ -8896,7 +9106,7 @@ function App() {
       }
     };
 
-    const timer = window.setInterval(syncZaloConversations, 4000);
+    const timer = window.setInterval(syncZaloConversations, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
@@ -13338,6 +13548,7 @@ function App() {
 
   // --- Send Message Action ---
   const handleSendMessage = async (textToSend = null) => {
+    omnichannelBatcherRef.current?.flush();
     const rawText = String((textToSend !== null ? textToSend : inputText) ?? '');
     const validationError = messageTextValidationError(rawText);
     if (validationError) {
@@ -17243,7 +17454,7 @@ function App() {
                                 onClick={() => {
                                   try {
                                     navigator.clipboard?.writeText(activeChat.phone);
-                                  } catch (_) {}
+                                  } catch {}
                                 }}
                               >
                                 <i className="fa-regular fa-copy" aria-hidden="true"></i>

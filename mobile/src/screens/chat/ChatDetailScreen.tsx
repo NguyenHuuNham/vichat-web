@@ -237,8 +237,14 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingAt = useRef(0);
+  const lastScrollToEndTimeRef = useRef(0);
+  const scrollToEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (scrollToEndTimerRef.current) {
+      clearTimeout(scrollToEndTimerRef.current);
+      scrollToEndTimerRef.current = null;
+    }
     if (openReadyTimerRef.current) {
       clearTimeout(openReadyTimerRef.current);
       openReadyTimerRef.current = null;
@@ -302,6 +308,10 @@ export function ChatDetailScreen({ route, navigation }: Props) {
         clearTimeout(initialRevealTimerRef.current);
         initialRevealTimerRef.current = null;
       }
+      if (scrollToEndTimerRef.current) {
+        clearTimeout(scrollToEndTimerRef.current);
+        scrollToEndTimerRef.current = null;
+      }
       historyAnchorRef.current = null;
     };
   }, [route.params.conversationId]);
@@ -340,10 +350,20 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       return () => { cancelled = true; };
     }
     const openKey = isOmniConversation
-      ? `${route.params.conversationId}:omni:${conversation?.messages?.length || 0}`
+      ? `${route.params.conversationId}:omni`
       : `${route.params.conversationId}:${conversation?.tinodeTopic}:${session?.generation || 0}`;
     if (openedConversationRef.current === openKey) return;
     openedConversationRef.current = openKey;
+
+    if (isOmniConversation) {
+      setTopicOpenReady(true);
+      void openConversation(route.params.conversationId);
+      return () => {
+        cancelled = true;
+        if (openedConversationRef.current === openKey) openedConversationRef.current = '';
+      };
+    }
+
     setTopicOpenReady(false);
     void openConversation(route.params.conversationId).then(() => {
       if (cancelled || openedConversationRef.current !== openKey) return;
@@ -368,6 +388,69 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       if (openedConversationRef.current === openKey) openedConversationRef.current = '';
     };
   }, [connection, conversation?.tinodeTopic, isOmniConversation, openConversation, route.params.conversationId, session?.generation]);
+
+  useEffect(() => {
+    if (!isOmniConversation || !route.params.conversationId) return undefined;
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollOmniMessages = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        const conversationId = route.params.conversationId;
+        const currentConv = useAppStore.getState().conversations.find(c => c.id === conversationId || c.managementId === conversationId);
+        if (!currentConv) return;
+
+        let remoteMessages: ChatMessage[] = [];
+        if (isZaloConversation) {
+          remoteMessages = await chatManagementService.getZaloMessages(conversationId);
+        } else if (isLivechatConversation) {
+          remoteMessages = await chatManagementService.getLivechatMessages(conversationId);
+        }
+
+        if (cancelled || !remoteMessages || !remoteMessages.length) return;
+
+        const existingMessages = currentConv.messages || [];
+        const existingIds = new Set(existingMessages.map(m => m.id));
+        const hasNew = remoteMessages.some(m => !existingIds.has(m.id)) || remoteMessages.length !== existingMessages.length;
+
+        if (hasNew) {
+          useAppStore.setState(prev => {
+            const matched = prev.conversations.find(c => c.id === conversationId || c.managementId === conversationId);
+            if (!matched) return prev;
+            return {
+              conversations: prev.conversations.map(c =>
+                c.id === matched.id
+                  ? {
+                      ...c,
+                      messages: remoteMessages,
+                      lastMsg: remoteMessages[remoteMessages.length - 1]?.text || c.lastMsg,
+                      updatedAt: remoteMessages[remoteMessages.length - 1]?.createdAt || c.updatedAt,
+                    }
+                  : c
+              ),
+            };
+          });
+        }
+      } catch {
+        // Background polling silent fail
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void pollOmniMessages();
+
+    const interval = setInterval(() => {
+      void pollOmniMessages();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isOmniConversation, isZaloConversation, isLivechatConversation, route.params.conversationId]);
 
   useEffect(() => {
     if (connection === 'connected') {
@@ -530,6 +613,29 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     }
   }, [markConversationRead, topicOpenReady]);
 
+  const requestThrottledScrollToEnd = useCallback((animated = false) => {
+    if (userScrollSessionRef.current || !listNearBottom.current || !initialScrollDoneRef.current) return;
+    const now = Date.now();
+    if (now - lastScrollToEndTimeRef.current < 80) {
+      if (!scrollToEndTimerRef.current) {
+        scrollToEndTimerRef.current = setTimeout(() => {
+          scrollToEndTimerRef.current = null;
+          if (!userScrollSessionRef.current && listNearBottom.current) {
+            lastScrollToEndTimeRef.current = Date.now();
+            listRef.current?.scrollToEnd({ animated });
+          }
+        }, 80);
+      }
+      return;
+    }
+    lastScrollToEndTimeRef.current = now;
+    requestAnimationFrame(() => {
+      if (!userScrollSessionRef.current && listNearBottom.current) {
+        listRef.current?.scrollToEnd({ animated });
+      }
+    });
+  }, []);
+
   const handleContentSizeChange = useCallback((_width: number, height: number) => {
     listMetricsRef.current.contentHeight = height;
 
@@ -549,13 +655,9 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     }
 
     if (!userScrollSessionRef.current && listNearBottom.current) {
-      requestAnimationFrame(() => {
-        if (!userScrollSessionRef.current && listNearBottom.current) {
-          listRef.current?.scrollToEnd({ animated: false });
-        }
-      });
+      requestThrottledScrollToEnd(false);
     }
-  }, [requestInitialScroll]);
+  }, [requestInitialScroll, requestThrottledScrollToEnd]);
 
   useEffect(() => {
     const previousLatestKey = latestMessageKeyRef.current;
@@ -564,11 +666,11 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       if (!listNearBottom.current && latestMessage.sender === 'incoming') {
         setNewMessageCount(current => current + 1);
       } else if (listNearBottom.current && initialScrollDoneRef.current) {
-        requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+        requestThrottledScrollToEnd(false);
       }
     }
     if (latestMessageKey) latestMessageKeyRef.current = latestMessageKey;
-  }, [latestMessage, latestMessageKey]);
+  }, [latestMessage, latestMessageKey, requestThrottledScrollToEnd]);
 
   useEffect(() => {
     if (listHasLaidOut.current) requestInitialScroll();
@@ -1249,7 +1351,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   ]);
   const peer = conversation?.members?.find(member => !identitiesOverlap(member, session?.user) && !identitiesOverlap(member, { id: tinodeClient.currentUserId, uid: tinodeClient.currentUserId })) || conversation?.members?.[0];
   const peerAccountId = peer ? accountIdForMember(peer, directory) : '';
-  const canEditNickname = Boolean(!conversation?.isGroup && !conversation?.isChatbot && peer && peerAccountId && peer.type !== 'bot' && !peer.isChatbot);
+  const _canEditNickname = Boolean(!conversation?.isGroup && !conversation?.isChatbot && peer && peerAccountId && peer.type !== 'bot' && !peer.isChatbot);
   const callCapability = !conversation?.isGroup && !conversation?.isChatbot && conversation?.tinodeTopic
     ? tinodeClient.getCallCapability(conversation.tinodeTopic, { isGroup: false, isChatbot: false })
     : { available: false, reason: 'Cuộc gọi mobile chỉ hỗ trợ hội thoại 1-1.' };
@@ -1389,7 +1491,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
           removeClippedSubviews={Platform.OS === 'android'}
           initialNumToRender={15}
           maxToRenderPerBatch={10}
-          windowSize={9}
+          windowSize={5}
           updateCellsBatchingPeriod={50}
           showsVerticalScrollIndicator={false}
           keyboardDismissMode="interactive"

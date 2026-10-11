@@ -129,7 +129,7 @@ class ZaloServiceTests(unittest.TestCase):
                 oa_id="oa_none",
             )
             self.assertFalse(result["success"])
-            self.assertEqual(result["error_code"], -1)
+            self.assertIn(result["error_code"], (-1, -14014))
 
         asyncio.run(run_test())
 

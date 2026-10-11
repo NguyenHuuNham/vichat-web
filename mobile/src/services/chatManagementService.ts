@@ -1,4 +1,4 @@
-import { Conversation, User, TinodeChatbotConfig } from '../types';
+import { ChatMessage, Conversation, User, TinodeChatbotConfig } from '../types';
 import { apiRequest, responseItems } from './apiClient';
 import { authService, normalizeUser } from './authService';
 import { normalizeMuteUntil } from '../utils/conversationNotifications';
@@ -35,6 +35,26 @@ async function listAllPages(
   }
 
   return records;
+}
+
+function normalizeZaloMessage(m: any): ChatMessage {
+  const isIncoming = m.sender === 'incoming' || m.sender_type === 'customer' || Boolean(m.is_customer);
+  const text = String(m.text || m.message || m.content || '');
+  const createdAt = m.createdAt || m.created_at || (m.timestamp ? new Date(m.timestamp * 1000).toISOString() : new Date().toISOString());
+  return {
+    id: String(m.id || `zalo_msg_${Date.now()}_${Math.random().toString(36).slice(2)}`),
+    type: (m.type || 'text') as any,
+    sender: isIncoming ? 'incoming' : 'outgoing',
+    senderId: String(m.senderId || m.sender_id || (isIncoming ? 'customer' : 'agent')),
+    senderName: String(m.senderName || m.sender_name || (m.isBot ? 'Chatbot AI' : (isIncoming ? 'Khách hàng' : 'Bạn'))),
+    avatar: m.avatar || '',
+    text,
+    createdAt,
+    time: m.time || (m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''),
+    pending: false,
+    deliveryStatus: 'sent',
+    isBot: Boolean(m.isBot || m.is_bot),
+  } as ChatMessage;
 }
 
 function normalizeConversation(record: any): Conversation {
@@ -78,8 +98,8 @@ function normalizeConversation(record: any): Conversation {
     participantIds: Array.isArray(record?.participantIds)
       ? record.participantIds.map(String)
       : (Array.isArray(properties.participantIds) ? properties.participantIds.map(String) : []),
-    messages: Array.isArray(record?.messages) ? record.messages : [],
-    lastMsg: String(record?.lastMsg || properties.lastMessage || ''),
+    messages: Array.isArray(record?.messages) ? record.messages.map(normalizeZaloMessage) : [],
+    lastMsg: String(record?.lastMsg || record?.lastMessage || record?.last_message || properties.lastMessage || properties.lastMsg || ''),
     time: String(record?.time || properties.time || ''),
     updatedAt: record?.updatedAt || record?.updated_at || record?.last_message_at || properties.updatedAt || properties.updated_at,
     deletedAt: String(record?.deletedAt || record?.deleted_at || properties.deletedAt || properties.deleted_at || ''),
@@ -94,6 +114,8 @@ function normalizeConversation(record: any): Conversation {
   };
 }
 
+let inFlightZaloPromise: Promise<Conversation[]> | null = null;
+
 export const chatManagementService = {
   async listUsers(search = '', signal?: AbortSignal): Promise<User[]> {
     const params: Record<string, string> = {};
@@ -102,14 +124,30 @@ export const chatManagementService = {
     return records.map(record => normalizeUser(record)).filter(user => user.active);
   },
 
+  async listZaloConversations(signal?: AbortSignal): Promise<Conversation[]> {
+    if (inFlightZaloPromise) return inFlightZaloPromise;
+    const promise = (async () => {
+      try {
+        const zaloPayload = await apiRequest<{ conversations: any[] }>('/api/v1/zalo/conversations', { signal, timeoutMs: 5000 });
+        if (Array.isArray(zaloPayload?.conversations)) {
+          return zaloPayload.conversations.map(normalizeConversation);
+        }
+        return [];
+      } catch {
+        return [];
+      }
+    })().finally(() => {
+      inFlightZaloPromise = null;
+    });
+    inFlightZaloPromise = promise;
+    return promise;
+  },
+
   async listConversations(signal?: AbortSignal): Promise<Conversation[]> {
     const records = await listAllPages('/api/v1/conversation', {}, CHAT_LIST_TIMEOUT_MS, signal);
-    let zaloRecords: any[] = [];
+    let zaloRecords: Conversation[] = [];
     try {
-      const zaloPayload = await apiRequest<{ conversations: any[] }>('/api/v1/zalo/conversations', { signal, timeoutMs: 5000 });
-      if (Array.isArray(zaloPayload?.conversations)) {
-        zaloRecords = zaloPayload.conversations;
-      }
+      zaloRecords = await chatManagementService.listZaloConversations(signal);
     } catch {
       // Fallback if zalo endpoint has issue
     }
@@ -329,12 +367,12 @@ export const chatManagementService = {
     });
   },
 
-  async getZaloMessages(conversationId: string): Promise<any[]> {
+  async getZaloMessages(conversationId: string): Promise<ChatMessage[]> {
     try {
       const payload = await apiRequest<{ status: string; messages: any[] }>(
         `/api/v1/zalo/conversations/${encodeURIComponent(conversationId)}/messages`
       );
-      return Array.isArray(payload?.messages) ? payload.messages : [];
+      return Array.isArray(payload?.messages) ? payload.messages.map(normalizeZaloMessage) : [];
     } catch {
       return [];
     }

@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {
   filterConversationIds,
   getChannelBadge,
-  resolveConversationChannel,
 } from './conversationListFilter.js';
 
 const conversations = {

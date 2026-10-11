@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { AppState } from 'react-native';
 import { authService } from '../services/authService';
 import { chatManagementService } from '../services/chatManagementService';
-import { cancelPendingRequests } from '../services/apiClient';
+import { cancelPendingRequests, setActiveTenantId } from '../services/apiClient';
 import { tinodeClient, TinodeEvent } from '../services/tinodeClient';
 import { routeMobileCallEvent } from './callStore';
 import { workspaceService } from '../services/workspaceService';
@@ -24,6 +24,14 @@ let appBecameActiveAt = Date.now();
 AppState.addEventListener('change', state => {
   if (state === 'active') {
     appBecameActiveAt = Date.now();
+    try {
+      const store = useAppStore?.getState?.();
+      if (store?.session?.generation) {
+        void syncZaloConversationsLoop(useAppStore.setState, useAppStore.getState, store.session.generation);
+      }
+    } catch {
+      // store uninitialized
+    }
   }
 });
 
@@ -45,6 +53,7 @@ interface AppStore {
   logout: () => Promise<void>;
   reconnect: () => Promise<void>;
   refreshData: () => Promise<void>;
+  syncZaloNow: () => Promise<void>;
   openConversation: (conversationId: string) => Promise<Conversation | null>;
   loadEarlier: (conversationId: string, limit?: number) => Promise<boolean>;
   createDirectConversation: (user: User) => Promise<Conversation>;
@@ -97,6 +106,46 @@ let nextSessionGeneration = 0;
 const deletedConversationIds = new Set<string>();
 const groupCreationRequests = new Map<string, Promise<Conversation>>();
 const directCreationRequests = new Map<string, Promise<Conversation>>();
+
+const pendingConversationBatch = new Map<string, Conversation>();
+let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushConversationBatch(set: any, get: () => AppStore) {
+  if (batchFlushTimer) {
+    clearTimeout(batchFlushTimer);
+    batchFlushTimer = null;
+  }
+  if (pendingConversationBatch.size === 0) return;
+
+  const toMerge = Array.from(pendingConversationBatch.values());
+  pendingConversationBatch.clear();
+
+  const current = get();
+  let updated = current.conversations;
+  for (const conv of toMerge) {
+    updated = mergeConversation(updated, conv);
+  }
+  set({ conversations: dedupeConversations(updated) });
+}
+
+function queueConversationUpdate(set: any, get: () => AppStore, conversation: Conversation) {
+  const key = conversation.id || conversation.tinodeTopic || conversation.managementId;
+  if (!key) return;
+
+  const existingPending = pendingConversationBatch.get(key);
+  if (existingPending) {
+    pendingConversationBatch.set(key, mergeConversationSnapshot(existingPending, conversation));
+  } else {
+    pendingConversationBatch.set(key, conversation);
+  }
+
+  if (!batchFlushTimer) {
+    batchFlushTimer = setTimeout(() => {
+      batchFlushTimer = null;
+      flushConversationBatch(set, get);
+    }, 50);
+  }
+}
 
 function mergeConversation(previous: Conversation[], incoming: Conversation) {
   const index = previous.findIndex(item => item.id === incoming.id
@@ -297,6 +346,93 @@ function syncNamesToNative(conversations: Conversation[], directory: User[]) {
   void flushNativeNameCache();
 }
 
+let zaloSyncTimer: ReturnType<typeof setInterval> | null = null;
+let isSyncingZalo = false;
+
+function stopZaloSync() {
+  if (zaloSyncTimer) {
+    clearInterval(zaloSyncTimer);
+    zaloSyncTimer = null;
+  }
+}
+
+async function syncZaloConversationsLoop(set: any, get: () => AppStore, generation: number) {
+  if (isSyncingZalo || AppState.currentState !== 'active' || !get().session || get().session?.generation !== generation) return;
+  isSyncingZalo = true;
+  try {
+    const zaloRooms = await chatManagementService.listZaloConversations();
+    if (!get().session || get().session?.generation !== generation || !Array.isArray(zaloRooms) || zaloRooms.length === 0) return;
+
+    const currentConvs = get().conversations;
+    const activeId = get().activeConversationId;
+    let nextList = [...currentConvs];
+    let changed = false;
+
+    for (const zaloRoom of zaloRooms) {
+      const existing = nextList.find(c => c.id === zaloRoom.id || c.managementId === zaloRoom.id);
+      if (existing) {
+        const targetBadge = activeId === zaloRoom.id ? 0 : (zaloRoom.badge ?? existing.badge ?? 0);
+        const existingMessages = existing.messages || [];
+        const incomingMessages = zaloRoom.messages || [];
+
+        const hasChanged = existing.lastMsg !== zaloRoom.lastMsg
+          || existing.badge !== targetBadge
+          || (existing as any).status !== (zaloRoom as any).status
+          || (existing as any).needs_human !== (zaloRoom as any).needs_human
+          || (existing as any).workflow_stage !== (zaloRoom as any).workflow_stage
+          || (zaloRoom.updatedAt && existing.updatedAt !== zaloRoom.updatedAt);
+
+        if (incomingMessages.length > 0) {
+          const existingMsgIds = new Set(existingMessages.map(m => m.id));
+          const newIncoming = incomingMessages.filter(m =>
+            !existingMsgIds.has(m.id) && m.sender === 'incoming' && !m.isBot
+          );
+          if (newIncoming.length > 0 && activeId !== zaloRoom.id) {
+            const latestMsg = newIncoming[newIncoming.length - 1];
+            void notifyIncomingMessage(zaloRoom, latestMsg);
+          }
+        }
+
+        if (hasChanged) {
+          const mergedRoom: Conversation = {
+            ...existing,
+            ...zaloRoom,
+            badge: targetBadge,
+            messages: incomingMessages.length > 0
+              ? mergeConversationSnapshot(existing, zaloRoom).messages
+              : existing.messages,
+          };
+          nextList = mergeConversationIntoList(nextList, mergedRoom);
+          changed = true;
+        }
+      } else {
+        nextList = mergeConversationIntoList(nextList, zaloRoom);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      set({ conversations: dedupeConversations(nextList) });
+    }
+  } catch {
+    // Background polling silent fail
+  } finally {
+    isSyncingZalo = false;
+  }
+}
+
+function startZaloSync(set: any, get: () => AppStore, generation: number) {
+  stopZaloSync();
+  void syncZaloConversationsLoop(set, get, generation);
+  zaloSyncTimer = setInterval(() => {
+    if (get().session?.generation !== generation) {
+      stopZaloSync();
+      return;
+    }
+    void syncZaloConversationsLoop(set, get, generation);
+  }, 4000);
+}
+
 function botConversation(config: any): Conversation | null {
   if (!config?.enabled || !(config.tinodeUid || config.uid)) return null;
   return {
@@ -409,7 +545,14 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
   const sessionUserId = String(session.user.id || '');
   tinodeUnsubscribe?.();
   tinodeUnsubscribe = null;
+  if (batchFlushTimer) {
+    clearTimeout(batchFlushTimer);
+    batchFlushTimer = null;
+  }
+  pendingConversationBatch.clear();
+  stopZaloSync();
   cancelPendingRequests();
+  setActiveTenantId(session.user.tenantId || (session as any).tenant_id || '');
   realtimeSyncRequest = null;
   remoteDataRequest = null;
   await tinodeClient.disconnect();
@@ -447,7 +590,13 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
             ? 'reconnecting'
             : event.state === 'error' ? 'error' : 'offline';
       set({ connection: state });
-      if (event.state === 'connected') void syncRealtimeTopics(get, 'connection').catch(() => {});
+      if (event.state === 'connected') {
+        const curError = get().error;
+        if (curError === 'Tinode đang khởi tạo quá lâu.' || curError === 'Realtime Tinode không phản hồi.') {
+          set({ error: '' });
+        }
+        void syncRealtimeTopics(get, 'connection').catch(() => {});
+      }
     } else if (event.type === 'conversation') {
       const currentConversation = conversationForId(current.conversations, event.conversation.id)
         || conversationForId(current.conversations, event.conversation.tinodeTopic);
@@ -468,7 +617,7 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
       if (deletedConversationIds.has(String(eventConversation.id))
         || deletedConversationIds.has(String(eventConversation.managementId))
         || deletedConversationIds.has(String(eventConversation.tinodeTopic))) return;
-      set({ conversations: mergeConversation(current.conversations, eventConversation) });
+      queueConversationUpdate(set, get, eventConversation);
     } else if (event.type === 'profile') {
        const matches = (value: User) => identitiesOverlap(value, { id: event.uid, uid: event.uid });
       const patch = { ...(event.name ? { name: event.name } : {}), ...(event.avatar ? { avatar: event.avatar } : {}) };
@@ -576,11 +725,14 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
 
   void (async () => {
     try {
-      const tinodeAuth = await withTimeout(
-        authService.refreshTinodeToken(),
-        8000,
-        'Tinode đang khởi tạo quá lâu.',
-      );
+      let tinodeAuth = session.tinodeAuth;
+      if (!tinodeAuth?.token) {
+        tinodeAuth = await withTimeout(
+          authService.refreshTinodeToken(),
+          15000,
+          'Tinode đang khởi tạo quá lâu.',
+        );
+      }
       if (get().session?.user.id !== sessionUserId) return;
       const updatedSession: Session = {
         ...get().session!,
@@ -600,9 +752,15 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
       });
       await withTimeout(
         tinodeClient.connect(tinodeAuth, () => authService.refreshTinodeToken()),
-        10000,
+        15000,
         'Realtime Tinode không phản hồi.',
       );
+      if (get().session?.generation === generation) {
+        const curError = get().error;
+        if (curError === 'Tinode đang khởi tạo quá lâu.' || curError === 'Realtime Tinode không phản hồi.') {
+          set({ error: '' });
+        }
+      }
       await syncRealtimeTopics(get, 'initial');
     } catch (error) {
       if (get().session?.user.id === sessionUserId && get().session?.generation === generation) {
@@ -612,7 +770,10 @@ async function bootstrapAuthenticated(set: any, get: () => AppStore, providedSes
   })();
 
   const remoteData = requestRemoteData(set, get);
-  if (get().session?.user.id === sessionUserId && get().session?.generation === generation) set({ status: 'ready' });
+  if (get().session?.user.id === sessionUserId && get().session?.generation === generation) {
+    set({ status: 'ready' });
+    startZaloSync(set, get, generation);
+  }
   void remoteData.catch(error => {
     if (get().session?.user.id === sessionUserId && get().session?.generation === generation) {
       set({ error: error instanceof Error ? error.message : 'Không tải được dữ liệu Chatmgt.' });
@@ -700,9 +861,16 @@ export const useAppStore = create<AppStore>((set, get) => ({
     resetPushNotificationRegistration();
     tinodeUnsubscribe?.();
     tinodeUnsubscribe = null;
+    if (batchFlushTimer) {
+      clearTimeout(batchFlushTimer);
+      batchFlushTimer = null;
+    }
+    pendingConversationBatch.clear();
     try {
       await authService.logout();
     } finally {
+      stopZaloSync();
+      setActiveTenantId('');
       cancelPendingRequests();
     }
     deletedConversationIds.clear();
@@ -731,7 +899,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return requestRemoteData(set, get);
   },
 
+  async syncZaloNow() {
+    const generation = get().session?.generation || 0;
+    await syncZaloConversationsLoop(set, get, generation);
+  },
+
   async openConversation(conversationId) {
+    flushConversationBatch(set, get);
     const generation = get().session?.generation || 0;
     let conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) return null;
@@ -741,19 +915,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       || conversation.id.startsWith('zalo:');
 
     if (isZalo) {
-      try {
-        const remoteMessages = await chatManagementService.getZaloMessages(conversation.id);
-        if (remoteMessages.length) {
-          const merged = mergeConversation(get().conversations, {
-            ...conversation,
-            messages: remoteMessages,
-          });
-          set({ conversations: merged });
-        }
-      } catch {
-        // preserve existing messages
-      }
       set({ activeConversationId: conversation.id });
+      void (async () => {
+        try {
+          const remoteMessages = await chatManagementService.getZaloMessages(conversation.id);
+          if (remoteMessages.length && get().session?.generation === generation) {
+            const current = conversationForId(get().conversations, conversation.id) || conversation;
+            const merged = mergeConversation(get().conversations, {
+              ...current,
+              messages: remoteMessages,
+            });
+            set({ conversations: merged });
+          }
+        } catch {
+          // preserve existing messages
+        }
+      })();
       return conversationForId(get().conversations, conversation.id) || conversation;
     }
 
@@ -763,19 +940,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       || conversation.id.startsWith('livechat:');
 
     if (isLivechat) {
-      try {
-        const remoteMessages = await chatManagementService.getLivechatMessages(conversation.id);
-        if (remoteMessages.length) {
-          const merged = mergeConversation(get().conversations, {
-            ...conversation,
-            messages: remoteMessages,
-          });
-          set({ conversations: merged });
-        }
-      } catch {
-        // preserve existing messages
-      }
       set({ activeConversationId: conversation.id });
+      void (async () => {
+        try {
+          const remoteMessages = await chatManagementService.getLivechatMessages(conversation.id);
+          if (remoteMessages.length && get().session?.generation === generation) {
+            const current = conversationForId(get().conversations, conversation.id) || conversation;
+            const merged = mergeConversation(get().conversations, {
+              ...current,
+              messages: remoteMessages,
+            });
+            set({ conversations: merged });
+          }
+        } catch {
+          // preserve existing messages
+        }
+      })();
       return conversationForId(get().conversations, conversation.id) || conversation;
     }
 
@@ -1169,6 +1349,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async sendText(conversationId, text, replyTo, mentions = []) {
+    flushConversationBatch(set, get);
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) throw new Error('Không tìm thấy cuộc trò chuyện.');
 
@@ -1203,6 +1384,19 @@ export const useAppStore = create<AppStore>((set, get) => ({
       });
       try {
         await chatManagementService.sendZaloMessage(userId, text, oaId, get().session?.user?.name, tenantId);
+        const refreshedMessages = await chatManagementService.getZaloMessages(conversationId);
+        if (refreshedMessages.length) {
+          const current = conversationForId(get().conversations, conversationId);
+          if (current) {
+            set({
+              conversations: mergeConversation(get().conversations, {
+                ...current,
+                messages: refreshedMessages,
+                lastMsg: text,
+              }),
+            });
+          }
+        }
       } catch (error) {
         set({
           conversations: get().conversations.map(item =>
@@ -1416,6 +1610,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   async markRead(conversationId, explicitSeq) {
+    flushConversationBatch(set, get);
     const conversation = conversationForId(get().conversations, conversationId);
     if (!conversation) return;
     const maxMessageSeq = conversation.messages.reduce(
@@ -1566,7 +1761,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
     void storageService.savePublicSession(session);
   },
 
-  setActiveConversation(conversationId) { set({ activeConversationId: conversationId }); },
+  setActiveConversation(conversationId) {
+    flushConversationBatch(set, get);
+    set({ activeConversationId: conversationId });
+  },
   clearError() { set({ error: '' }); },
 }));
 

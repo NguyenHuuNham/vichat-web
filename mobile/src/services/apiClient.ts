@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 
 let accessToken = '';
+let activeTenantId = '';
 const activeControllers = new Set<AbortController>();
 
 export class ApiError extends Error {
@@ -23,6 +24,14 @@ export function setAccessToken(token?: string | null) {
 
 export function getAccessToken() {
   return accessToken;
+}
+
+export function setActiveTenantId(tenantId?: string | null) {
+  activeTenantId = String(tenantId || '').trim();
+}
+
+export function getActiveTenantId() {
+  return activeTenantId;
 }
 
 /** Abort all requests belonging to the previous auth/session generation. */
@@ -65,6 +74,7 @@ export async function apiRequest<T = any>(path: string, options: RequestOptions 
     Accept: 'application/json',
     ...(requestInit.body && !isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(activeTenantId ? { 'X-Tenant-Id': activeTenantId } : {}),
     ...(_mobileLogin || Platform.OS !== 'web' ? { 'X-Vichat-Client': 'mobile' } : {}),
     ...((requestInit.headers || {}) as Record<string, string>),
   };

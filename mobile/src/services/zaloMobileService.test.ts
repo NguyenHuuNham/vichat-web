@@ -71,6 +71,6 @@ describe('mobile Zalo OA omnichannel integration', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
 
     expect(url).toContain('/api/v1/zalo/conversations/zalo%3Aoa_1%3Azalo_user_1/messages');
-    expect(fetched).toEqual(messages);
+    expect(fetched).toMatchObject(messages);
   });
 });

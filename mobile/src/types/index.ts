@@ -248,6 +248,8 @@ export interface ChatMessage {
   contactCard?: ContactCardAttachment;
   isGif?: boolean;
   doodle?: boolean;
+  isBot?: boolean;
+  channel?: string;
   createdAt?: string;
   time?: string;
   pending?: boolean;
