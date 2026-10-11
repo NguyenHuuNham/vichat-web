@@ -3286,9 +3286,11 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
   return Object.fromEntries(Object.entries(rooms).map(([id, room]) => [id, {
     ...room,
     managementId: room.managementId || id,
-    tinodeTopic: (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.channel === 'livechat' || String(room.id || '').startsWith('livechat:'))
-      ? undefined
-      : (room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id)),
+    tinodeTopic: room.tinodeTopic || (
+      (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.channel === 'livechat' || String(room.id || '').startsWith('livechat:'))
+        ? undefined
+        : chatManagementService.getTinodeTopic(managementUserId, room.managementId || id)
+    ),
     accountSession,
   }]));
 }

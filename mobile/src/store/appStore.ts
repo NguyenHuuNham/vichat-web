@@ -412,7 +412,9 @@ async function syncZaloConversationsLoop(set: any, get: () => AppStore, generati
     }
 
     if (changed) {
-      set({ conversations: dedupeConversations(nextList) });
+      const deduped = dedupeConversations(nextList);
+      tinodeClient.setAllowedConversationTopics(deduped.map(item => item.tinodeTopic).filter(Boolean));
+      set({ conversations: deduped });
     }
   } catch {
     // Background polling silent fail

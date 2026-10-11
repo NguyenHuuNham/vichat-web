@@ -15,6 +15,11 @@ from sanic.response import redirect
 from application.database import redisdb
 from application.server import app
 from application.services import ChatbotService, ZaloService
+from application.services.tinode_zalo_bridge import (
+    get_or_create_zalo_tinode_topic,
+    publish_zalo_message_to_tinode,
+    safe_async_publish_to_tinode,
+)
 from application.services.zalo_service import (
     build_authorization_url,
     generate_code_challenge,
@@ -318,10 +323,22 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None, limit: int
             oa_name = conv_obj.get("oa_name") or KNOWN_OA_NAME_MAP.get(oa_id) or "Zalo OA"
             customer_name = conv_obj.get("name") or "Khách Zalo"
 
+            tinode_topic_val = conv_obj.get("tinode_topic") or conv_obj.get("tinodeTopic")
+            if not tinode_topic_val and redisdb is not None:
+                try:
+                    cached_t = redisdb.get("zalo:tinode_topic:{}".format(cid))
+                    if cached_t:
+                        tinode_topic_val = (
+                            cached_t.decode("utf-8") if isinstance(cached_t, bytes) else str(cached_t)
+                        ).strip()
+                except Exception:
+                    pass
+
             conversations.append({
                 "id": cid,
                 "managementId": cid,
-                "tinodeTopic": None,
+                "tinodeTopic": tinode_topic_val or None,
+                "tinode_topic": tinode_topic_val or None,
                 "name": customer_name,
                 "oa_id": conv_obj.get("oa_id") or oa_id,
                 "oa_name": oa_name,
@@ -503,7 +520,23 @@ async def zalo_webhook(request):
         if file_obj:
             oa_msg["file"] = file_obj
 
-        _append_zalo_message(conversation_id, oa_msg)
+        # Bridge to Tinode: ensure topic and publish message
+        tinode_topic = await get_or_create_zalo_tinode_topic(
+            app,
+            oa_id=oa_id,
+            sender_id=customer_id,
+            customer_name="Khách Zalo",
+            tenant_id=tenant_id,
+        )
+        if tinode_topic:
+            safe_async_publish_to_tinode(
+                app,
+                topic=tinode_topic,
+                text=message_text or "[Đính kèm]",
+                sender_name=sender_name,
+                is_bot=is_bot,
+                is_agent=not is_bot,
+            )
 
         if redisdb is not None:
             try:
@@ -515,6 +548,8 @@ async def zalo_webhook(request):
                     "channelType": "zalo_oa",
                     "last_message": message_text or "[Đính kèm]",
                     "updated_at": time.time(),
+                    "tinode_topic": tinode_topic or conv_data.get("tinode_topic"),
+                    "tinodeTopic": tinode_topic or conv_data.get("tinodeTopic"),
                 })
                 redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
                 redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
@@ -734,6 +769,19 @@ async def zalo_webhook(request):
                 _set_handover_pending(oa_id, sender_id, active=True)
                 await zalo_service.send_cs_message(user_id=sender_id, message_text=bot_reply_text, oa_id=oa_id)
 
+    # Ensure Tinode topic exists for this Zalo conversation
+    tinode_topic = ""
+    try:
+        tinode_topic = await get_or_create_zalo_tinode_topic(
+            app=app,
+            oa_id=oa_id,
+            sender_id=sender_id,
+            customer_name=customer_name or "Khách Zalo",
+            tenant_id=tenant_id,
+        )
+    except Exception as t_exc:
+        logger.warning("Could not get or create Tinode topic for Zalo %s: %s", conversation_id, t_exc)
+
     # Persist customer message to conversation history
     cust_msg = {
         "id": msg_id or "zalo_msg_{}".format(int(time.time() * 1000)),
@@ -752,6 +800,16 @@ async def zalo_webhook(request):
         cust_msg["file"] = file_obj
     _append_zalo_message(conversation_id, cust_msg)
 
+    if tinode_topic and (message_text or img_url or file_obj):
+        safe_async_publish_to_tinode(
+            app=app,
+            topic=tinode_topic,
+            text=message_text or ("[Hình ảnh: {}]".format(img_url) if img_url else "[Đính kèm]"),
+            sender_name=customer_name or "Khách Zalo",
+            is_bot=False,
+            is_agent=False,
+        )
+
     # If bot replied (or courtesy message sent), persist bot message to conversation history
     if bot_reply_text:
         _append_zalo_message(conversation_id, {
@@ -766,6 +824,15 @@ async def zalo_webhook(request):
             "isBot": True,
             "channel": "zalo_oa",
         })
+        if tinode_topic:
+            safe_async_publish_to_tinode(
+                app=app,
+                topic=tinode_topic,
+                text=bot_reply_text,
+                sender_name="Chatbot AI",
+                is_bot=True,
+                is_agent=False,
+            )
 
     # Broadcast event & sync conversation metadata for ViChat Web & Mobile
     if redisdb is not None:
@@ -776,6 +843,8 @@ async def zalo_webhook(request):
                 "oa_id": oa_id,
                 "tenant_id": tenant_id,
                 "conversation_id": conversation_id,
+                "tinode_topic": tinode_topic or None,
+                "tinodeTopic": tinode_topic or None,
                 "sender_id": sender_id,
                 "sender_name": customer_name,
                 "avatar": customer_avatar,
@@ -806,6 +875,8 @@ async def zalo_webhook(request):
                 "oa_id": oa_id,
                 "oa_name": oa_name,
                 "tenant_id": tenant_id,
+                "tinode_topic": tinode_topic or existing_conv.get("tinode_topic") or None,
+                "tinodeTopic": tinode_topic or existing_conv.get("tinodeTopic") or None,
                 "channel": "zalo_oa",
                 "channelType": "zalo_oa",
                 "name": customer_name or existing_conv.get("name") or "Khách Zalo",
@@ -1022,6 +1093,19 @@ async def zalo_send_message_manual(request):
         _set_takeover_active(oa_id, user_id, active=True, ttl=TAKEOVER_TTL_SECONDS)
         _set_handover_pending(oa_id, user_id, active=False)
 
+        # Ensure Tinode topic exists
+        tinode_topic = ""
+        try:
+            tinode_topic = await get_or_create_zalo_tinode_topic(
+                app,
+                oa_id=oa_id,
+                sender_id=user_id,
+                customer_name="Khách Zalo",
+                tenant_id=tenant_id,
+            )
+        except Exception as t_exc:
+            logger.warning("Could not get or create Tinode topic for manual send: %s", t_exc)
+
         # Persist agent outgoing message to conversation history
         _append_zalo_message(conversation_id, {
             "id": sent_msg_id or "agent_{}".format(int(time.time() * 1000)),
@@ -1035,6 +1119,16 @@ async def zalo_send_message_manual(request):
             "channel": "zalo_oa",
         })
 
+        if tinode_topic:
+            safe_async_publish_to_tinode(
+                app,
+                topic=tinode_topic,
+                text=message,
+                sender_name=agent_name,
+                is_bot=False,
+                is_agent=True,
+            )
+
         if redisdb is not None:
             try:
                 raw_conv = redisdb.get("zalo:conversation:{}".format(conversation_id))
@@ -1047,6 +1141,8 @@ async def zalo_send_message_manual(request):
                     "status": "agent_handling",
                     "needs_human": False,
                     "updated_at": time.time(),
+                    "tinode_topic": tinode_topic or conv_data.get("tinode_topic"),
+                    "tinodeTopic": tinode_topic or conv_data.get("tinodeTopic"),
                 })
                 redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
                 redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
@@ -1058,6 +1154,8 @@ async def zalo_send_message_manual(request):
                     "oa_id": oa_id,
                     "tenant_id": tenant_id,
                     "conversation_id": conversation_id,
+                    "tinode_topic": tinode_topic or None,
+                    "tinodeTopic": tinode_topic or None,
                     "sender_id": user_id,
                     "agent_name": agent_name,
                     "message": message,

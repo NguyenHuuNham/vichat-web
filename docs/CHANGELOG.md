@@ -6,6 +6,44 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-08 - Triển khai Tinode Zalo Bridge: Lưu trữ và đồng bộ toàn bộ tin nhắn Zalo OA vào cơ sở dữ liệu Tinode (chatapi.gonplatform.com) cho ViChat Web & Mobile:
+
+- Thoi gian: 2026-10-11 20:45 (Asia/Saigon)
+- Loai: Architecture Bridge Implementation | Tinode Authoritative Persistence | Production Deployment | Web & Mobile Integration
+- Trang thai: Hoan tat 100%, Backend & Web Frontend da build va deploy len Server Production 192.168.80.20, tat ca 467/467 web tests va 242/242 mobile tests PASS.
+- Yeu cau tu nguoi dung:
+  - "Nhung nguon tin nhan cua vichat lay tu tinode ma neu kh luu o tinode hong het db. Cai chatapi.gonplatform.com do la cua cty t va t dung cai do de luu lai toan bo tin nhan. Dung tai khoan account cua nhan vien la log vao duoc va xem dc lich su toan bo tin nhan o ben vichat. Khong tu nhien sinh ra cai tinode de lam gi dau"
+  - "tieps tuc task / tieeeops tuc trien khai"
+- Nguyen nhan ky thuat goc re:
+  - Tinode la nguon du lieu goc (Single Source of Truth) cua he thong ViChat. Truoc day, tin nhan Zalo OA chi duoc luu tam trong Redis list, khong tao topic Tinode group (`grp...`).
+  - Vi frontend truyen topic gia dang `zalo:oa_id:user_id` khien Tinode tra ve loi `404 topic not found`, code cu da gan cung `tinodeTopic: undefined` tai `src/app/App.jsx:3289` va `api_zalo.py:324` de che giau loi, cat dut hoan toan Tinode khoi luong tin nhan Zalo.
+  - He qua la khi nhan vien dang nhap bang tai khoan ViChat, ung dung doc tu Tinode thi khong tim thay lich su hoi thoai nao cua Zalo.
+- Cac giai phap va hanh dong da trien khai:
+  1. Xay dung dich vu Tinode Zalo Bridge (`chatservice-main/application/services/tinode_zalo_bridge.py`):
+     - `get_or_create_zalo_tinode_topic`: Ket noi Tinode WebSocket noi bo (`ws://chat:80/v0/channels`) bang tai khoan he thong `upgo_chatbot`. Khi co hoi thoai Zalo moi, tao group topic Tinode that voi cu phap `{sub: {topic: "new", set: {desc: {public: {fn: "[Zalo] " + customer_name}, defacs: {auth: "JRWPA", anon: "N"}}}}}`.
+     - Phân quyền `defacs: {auth: "JRWPA", anon: "N"}`: Cho phep tat ca tai khoan nhan vien duoc xac thuc trong tenant join, subscribe va doc toan bo tin nhan tren topic ma khong can loi moi hay phat sinh loi 404.
+     - Luu giu cache topic mapping trong Redis `zalo:tinode_topic:{cid}` va metadata hoi thoai.
+     - Tu dong backfill bat dong bo cac tin nhan cu tu Redis vao topic Tinode moi tao.
+     - `publish_zalo_message_to_tinode`: Publish tin nhan truc tiep len topic Tinode voi dinh dang ro rang (`👤 [Khách]`, `🤖 [Bot AI]`, `👩‍💼 [CSKH]`).
+     - `safe_async_publish_to_tinode`: Wrapper non-blocking fire-and-forget qua `asyncio.create_task` de webhook phan hoi ngay (< 200ms).
+  2. Tich hop vao Controller ViChat Backend (`chatservice-main/application/controllers/api_zalo.py`):
+     - Inbound Webhook (`zalo_webhook`): Tu dong kiem tra/tao topic va publish tin nhan khach hang + phan hoi cua Bot AI vao Tinode.
+     - Outgoing Webhook (`oa_send_*`): Publish tin nhan bot / nhan vien tra loi vao Tinode.
+     - Manual Agent Send (`zalo_send_message_manual`): Publish tin nhan nhan vien CSKH vao Tinode.
+     - Listing API (`_get_active_zalo_conversations_for_listing`): Tra ve truong `tinodeTopic` (va `tinode_topic`) la `grp...` that.
+  3. Tich hop Web Frontend (`src/app/App.jsx`) va Mobile App (`mobile/src/store/appStore.ts`):
+     - `App.jsx`: Khong con ep buoc `undefined` ma giu nguyen `room.tinodeTopic` do backend tra ve, giup Web client ket noi truc tiep vao topic Tinode.
+     - `appStore.ts`: Bo sung cap nhat `tinodeClient.setAllowedConversationTopics` moi khi sync danh sach Zalo, giup Mobile cho phep va ket noi realtime den cac topic `grp...` cua Zalo.
+  4. Trien khai Production tren server 192.168.80.20:
+     - Copy bridge service va controller vao container `songhong-production-chatmgt-1`.
+     - Kiem tra `py_compile` va import thanh cong 100%. Restart container va commit snapshot image `songhong-production-chatmgt:latest`.
+     - Build ban Web production moi (`npm run build:production`), dong goi tarball va deploy vao container `songhong-production-chat-1` (`/usr/share/nginx/html/`), reload Nginx va commit snapshot image `songhong-production-chat:latest`.
+  5. Kiem thu va xac minh thuc te:
+     - Kiem thu `verify_tinode_bridge.py` tren container: Tao topic `grpgkI9jdd6jTw`, cache vao Redis, publish message Tinode thanh cong `seq` tra ve tu Tinode.
+     - Frontend test suite: 467/467 tests PASS (`npm run test:frontend`).
+     - Mobile test suite: 242/242 tests PASS tren 51 test files (`vitest run`).
+     - TypeScript check: 0 loi (`npm --prefix mobile run typecheck`).
+
 ## 2026-10-11-07 - Triển khai (Deploy) và Commit thành công Chatbot Server UpgoBot (192.168.80.154 qua jump host 103.74.122.218): Đồng bộ hai chiều tin nhắn Zalo OA (Bot AI trả lời & Nhân viên CSKH) về ViChat:
 
 - Thoi gian: 2026-10-11 19:45 (Asia/Saigon)

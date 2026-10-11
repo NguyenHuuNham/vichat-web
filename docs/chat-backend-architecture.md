@@ -1760,5 +1760,24 @@ ViChat supports multi-tenant omnichannel communication across Zalo OA, Livechat 
   - Cơ chế Smart Throttled Auto-scroll: Giữ nhịp cuộn tự động tối đa 1 lần / 80ms (`chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight`). Nếu người dùng đang cuộn lên xem lịch sử tin nhắn cũ (`chatIsNearBottomRef.current === false`), hệ thống không kéo giật màn hình xuống mà kích hoạt nút thông báo tin mới ("Tin nhắn mới ↓"), mô phỏng hoàn toàn trải nghiệm mượt mà của Zalo.
   - Flush tức thì: Khi người dùng chọn hội thoại mới hoặc gửi tin nhắn, batcher được xả ngay lập tức (0ms delay).
 
+### 7. Zalo OA Tinode Bridge & Authoritative Message Persistence
+- **Triết lý kiến trúc**:
+  - `chatapi.gonplatform.com` (Central Tinode) là nguồn dữ liệu chuẩn (Single Source of Truth) duy nhất cho toàn bộ tin nhắn trong hệ thống ViChat.
+  - Khi nhân viên CSKH đăng nhập ViChat (Web hoặc Mobile), lịch sử hội thoại và tin nhắn được tải và đồng bộ trực tiếp từ Tinode thông qua WebSocket.
+  - Việc lưu trữ riêng rẽ tại Redis chỉ đóng vai trò bộ đệm tạm thời / metadata cache phục vụ bộ lọc nhanh; không được bỏ qua Tinode.
+- **Mô hình định danh Topic Tinode cho Zalo OA**:
+  - Mỗi hội thoại Zalo (`zalo:{oa_id}:{sender_id}`) được ánh xạ 1:1 với một Tinode group topic thật (`grp...`).
+  - Khi hội thoại phát sinh tin nhắn đầu tiên, dịch vụ `tinode_zalo_bridge` (`chatservice-main/application/services/tinode_zalo_bridge.py`) kết nối WebSocket nội bộ (`ws://chat:80/v0/channels`) bằng tài khoản hệ thống `upgo_chatbot` và gửi gói `{sub: {topic: "new", set: {desc: {public: {fn: "[Zalo] " + customer_name}, defacs: {auth: "JRWPA", anon: "N"}}}}}`.
+  - Phân quyền `defacs: {auth: "JRWPA", anon: "N"}`: Cho phép tất cả tài khoản nhân viên đã xác thực trong tenant tham gia (`sub`), đọc toàn bộ lịch sử (`data`) và gửi tin phản hồi mà không bị lỗi `404 topic not found` hay yêu cầu lời mời gia nhập thủ công.
+  - Mã định danh `grp...` được lưu giữ vĩnh viễn trong Redis cache `zalo:tinode_topic:{conversation_id}` và metadata hội thoại.
+- **Cơ chế Asynchronous Non-blocking Message Publishing**:
+  - Mọi tin nhắn đến từ khách hàng Zalo (`user_send_text`, `user_send_image`, `user_send_file`), tin nhắn phản hồi tự động từ Chatbot AI, và tin nhắn trả lời thủ công của nhân viên CSKH (`zalo_send_message_manual`) đều được gửi đến Tinode qua `safe_async_publish_to_tinode`.
+  - Cơ chế non-blocking fire-and-forget qua `asyncio.create_task` đảm bảo webhook Zalo phản hồi HTTP 200 trong vòng < 200ms, không gây timeout hoặc retry từ phía Zalo Open API.
+  - Tin nhắn được chuẩn hóa prefix nhận diện: `👤 [Khách]`, `🤖 [Bot AI]`, `👩‍💼 [CSKH]`.
+- **Tích hợp Web & Mobile Client**:
+  - Web Client (`src/app/App.jsx`): Duy trì trường `tinodeTopic: room.tinodeTopic` từ backend, cho phép subscribe trực tiếp WebSocket Tinode.
+  - Mobile Client (`mobile/src/store/appStore.ts`): Tự động cập nhật `tinodeClient.setAllowedConversationTopics` khi đồng bộ danh sách hội thoại Zalo, đảm bảo realtime WebSocket sẵn sàng cho các topic `grp...`.
+
+
 
 
