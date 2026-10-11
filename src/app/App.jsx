@@ -19,6 +19,7 @@ import {
   managementAuthClient,
 } from '../features/chat/services/chatManagementService';
 import {
+  isOmnichannelStreamConnected,
   startOmnichannelStream,
   stopOmnichannelStream,
   subscribeOmnichannelEvents,
@@ -3285,8 +3286,8 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
   return Object.fromEntries(Object.entries(rooms).map(([id, room]) => [id, {
     ...room,
     managementId: room.managementId || id,
-    tinodeTopic: (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:'))
-      ? room.id
+    tinodeTopic: (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:') || room.channel === 'livechat' || String(room.id || '').startsWith('livechat:'))
+      ? undefined
       : (room.tinodeTopic || chatManagementService.getTinodeTopic(managementUserId, room.managementId || id)),
     accountSession,
   }]));
@@ -5375,7 +5376,11 @@ function App() {
       const room = rawRoom ? safeNormalizeConversationForRender(rawRoom, key) : null;
       const completionReadSequence = unreadBoundaryReadSequence(boundary, roomMessages(room));
       let acknowledgedReadSeq = 0;
-      if (chatMode === 'tinode') {
+      const isOmnichannelRoom = room?.channel === 'zalo_oa'
+        || String(key || '').startsWith('zalo:')
+        || room?.channel === 'livechat'
+        || String(key || '').startsWith('livechat:');
+      if (chatMode === 'tinode' && !isOmnichannelRoom) {
         const topicName = boundary.topicName || room?.tinodeTopic;
         if (!topicName || completionReadSequence <= 0) return;
         acknowledgedReadSeq = await tinodeClient.markRead(topicName, {
@@ -6071,7 +6076,11 @@ function App() {
       && conversationNavigationRef.current === navigation;
     try {
       const room = conversationsRef.current[key];
-      if (chatMode === 'tinode' && room?.tinodeTopic) {
+      const isOmnichannelRoom = room?.channel === 'zalo_oa'
+        || String(key || '').startsWith('zalo:')
+        || room?.channel === 'livechat'
+        || String(key || '').startsWith('livechat:');
+      if (chatMode === 'tinode' && room?.tinodeTopic && !isOmnichannelRoom) {
         const loaded = await tinodeClient.refreshConversation(room.tinodeTopic);
         if (!isCurrent()) return;
         setConversations(previous => {
@@ -6124,6 +6133,11 @@ function App() {
     if (chatMode !== 'tinode') return;
     const roomId = String(currentChatIdRef.current || '');
     const room = conversationsRef.current[roomId];
+    const isOmnichannelRoom = room?.channel === 'zalo_oa'
+      || String(roomId || '').startsWith('zalo:')
+      || room?.channel === 'livechat'
+      || String(roomId || '').startsWith('livechat:');
+    if (isOmnichannelRoom) return;
     const topicName = String(room?.tinodeTopic || '');
     const root = chatMessagesRef.current;
     if (!room || !topicName || !root || root.scrollTop > 72) return;
@@ -8958,7 +8972,7 @@ function App() {
             ...(existingRoom || {
               id: convId,
               managementId: convId,
-              tinodeTopic: convId,
+              tinodeTopic: undefined,
               name: firstEvent.sender_name || 'Khách Zalo',
               avatarUrl: firstEvent.avatar || '',
               avatar: firstEvent.avatar || '',
@@ -9042,8 +9056,9 @@ function App() {
     const syncZaloConversations = async () => {
       if (cancelled || accountSessionRef.current !== accountSession) return;
       if (typeof document !== 'undefined' && document.hidden) return;
+      if (isOmnichannelStreamConnected()) return;
       try {
-        const zaloRooms = await chatManagementService.listZaloConversations();
+        const zaloRooms = await chatManagementService.listZaloConversations({ limit: 50 });
         if (cancelled || accountSessionRef.current !== accountSession || !Array.isArray(zaloRooms) || zaloRooms.length === 0) return;
 
         setConversations(previous => {
@@ -9082,9 +9097,9 @@ function App() {
                 ...existingRoom,
                 ...zaloRoom,
                 badge: targetBadge,
-                messages: zaloRoom.messages?.length
-                  ? mergeTinodeMessages(existingRoom.messages, zaloRoom.messages)
-                  : existingRoom.messages,
+                messages: (existingRoom.messages && existingRoom.messages.length > 0)
+                  ? existingRoom.messages
+                  : (zaloRoom.messages || []),
               } : {
                 ...zaloRoom,
                 badge: targetBadge,
@@ -9106,7 +9121,7 @@ function App() {
       }
     };
 
-    const timer = window.setInterval(syncZaloConversations, 5000);
+    const timer = window.setInterval(syncZaloConversations, 15000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

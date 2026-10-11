@@ -611,8 +611,12 @@ function bindingKey(userId, conversationId) {
 }
 
 export const chatManagementService = {
+  get apiBase() {
+    return apiBase;
+  },
+
   get tenantId() {
-    return tenantId;
+    return activeSessionTenantId() || tenantId;
   },
 
   get remote() {
@@ -1224,10 +1228,11 @@ export const chatManagementService = {
     });
   },
 
-  async listZaloConversations({ signal } = {}) {
+  async listZaloConversations({ signal, limit = 50 } = {}) {
     if (!apiBase) return [];
     try {
-      const zaloPayload = await apiRequest('/api/v1/zalo/conversations', { signal, cache: 'no-store' });
+      const query = limit ? `?limit=${encodeURIComponent(limit)}` : '';
+      const zaloPayload = await apiRequest(`/api/v1/zalo/conversations${query}`, { signal, cache: 'no-store' });
       if (Array.isArray(zaloPayload?.conversations)) {
         return zaloPayload.conversations.map(normalizeConversation);
       }

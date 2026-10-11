@@ -226,7 +226,7 @@ def _get_zalo_messages(conversation_id: str, limit: int = 100) -> list:
     return messages
 
 
-def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
+def _get_active_zalo_conversations_for_listing(tenant_id: str = None, limit: int = 100) -> list:
     """Returns active Zalo OA conversations scoped by tenant for Web & Mobile listing."""
     conversations = []
     if redisdb is None or not tenant_id:
@@ -268,7 +268,12 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
         if not valid_items:
             return conversations
 
-        # Fetch latest messages (limit=1) and takeover flags in second pipeline
+        # Sort valid items by latest updated_at first and limit to prevent massive payload overloads
+        valid_items.sort(key=lambda item: float(item[1].get("updated_at") or 0), reverse=True)
+        if limit and limit > 0:
+            valid_items = valid_items[:limit]
+
+        # Fetch latest messages (limit=1) and takeover flags in second pipeline for the top items
         raw_msgs_list = []
         raw_takeover_list = []
         if hasattr(redisdb, "pipeline"):
@@ -316,7 +321,7 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None) -> list:
             conversations.append({
                 "id": cid,
                 "managementId": cid,
-                "tinodeTopic": cid,
+                "tinodeTopic": None,
                 "name": customer_name,
                 "oa_id": conv_obj.get("oa_id") or oa_id,
                 "oa_name": oa_name,
@@ -1078,7 +1083,13 @@ async def zalo_list_conversations(request):
             "conversations": [],
         }, status=401)
 
-    conversations = _get_active_zalo_conversations_for_listing(tenant_id)
+    limit = 100
+    try:
+        limit = int(request.args.get("limit", 100))
+    except (ValueError, TypeError):
+        pass
+
+    conversations = _get_active_zalo_conversations_for_listing(tenant_id, limit=limit)
     return json_response({
         "status": "success",
         "tenant_id": tenant_id,

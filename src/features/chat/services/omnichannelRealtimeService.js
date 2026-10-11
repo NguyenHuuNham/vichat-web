@@ -25,6 +25,10 @@ function notifyListeners(event) {
 let consecutiveErrors = 0;
 const MAX_CONSECUTIVE_ERRORS = 3;
 
+export function isOmnichannelStreamConnected() {
+  return eventSource !== null && eventSource.readyState === 1;
+}
+
 export function startOmnichannelStream() {
   if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
   if (eventSource || isConnecting) return;
@@ -32,7 +36,7 @@ export function startOmnichannelStream() {
 
   const apiBase = chatManagementService.apiBase || '';
   const tenantId = chatManagementService.tenantId || '';
-  const streamUrl = `${apiBase}/api/v1/omnichannel/stream`;
+  const streamUrl = apiBase ? `${apiBase}/api/v1/omnichannel/stream` : '/api/v1/omnichannel/stream';
 
   try {
     isConnecting = true;

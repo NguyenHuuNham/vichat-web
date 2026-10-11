@@ -6,6 +6,39 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-11-04 - Khac phuc triet de loi treo/do Web do qua tai polling va loi toast "topic not found (404)" tren hoi thoai Zalo OA:
+
+- Thoi gian: 2026-10-11 13:35 (Asia/Saigon)
+- Loai: Web Performance & Realtime Stabilization | Fix UI Freeze, Payload Optimization (2.6MB -> 30KB), Fix "topic not found (404)"
+- Trang thai: Hoan tat 100%, Backend Unittest pass (18/18 tests), Frontend Node tests pass (467/467 tests), Oxlint 0 errors, Vite production build pass.
+- Yeu cau tu nguoi dung:
+  - Bản web đã đơ và không thao tác được gì vì quá tải, giải pháp đưa ra vẫn chưa ổn (kèm hình ảnh lỗi toast "Không thể hoàn tất thao tác topic not found (404)" khi mở hội thoại Zalo OA).
+- Nguyen nhan ky thuat goc re:
+  1. Con bao Polling 2.6 MB moi 5 giay gay do trinh duyet:
+     - Trong `App.jsx`, `syncZaloConversations` chay `setInterval` moi 5 giay goi `chatManagementService.listZaloConversations()`.
+     - Phia Backend (`api_zalo.py`), ham `_get_active_zalo_conversations_for_listing` khong co phan trang / limit, tra ve toan bo hang nghin cuoc tro chuyen trong Redis voi day du danh sach `messages` gay bung no payload len toi 2,604,311 bytes (2.6 MB)!
+     - Trinh duyet cu moi 5s phai tai 2.6 MB JSON, parse tren Main Thread, chay vong lap qua hang nghin phong va diff lai toan bo Virtual DOM cua React, khien JS Thread bi chiem dung 100% (do, treo, khong nhan thao tac chuot/ban phim).
+  2. Loi toast "topic not found (404)":
+     - Trong `App.jsx` (dong 3288 va 8961), phong Zalo OA bi gan `tinodeTopic = room.id` (`zalo:...`).
+     - Khi nguoi dung bam vao cuoc tro chuyen Zalo OA, `queueConversationLatestScroll` va `loadEarlierHistory` nhin thay co `room.tinodeTopic` nen da goi `tinodeClient.refreshConversation(room.tinodeTopic)` va `tinodeClient.loadEarlierMessages(topicName)`.
+     - Do server Tinode chi quan ly cac topic noi bo (khong ton tai topic `zalo:...`), Tinode server tra ve loi 404 "topic not found", khien ung dung bat toast bao loi "Khong the hoan tat thao tac: topic not found (404)".
+  3. Ket noi SSE `/api/v1/omnichannel/stream` bi ngat va khong ket noi duoc toi Backend:
+     - `chatManagementService` khong export getter `apiBase` va `tenantId` dong theo phien lam viec, khien URL cua `EventSource` bi tro nham ve web origin (`chat.gonplatform.com`) thay vi Chatmgt API (`chatmgt.gonplatform.com`), dong thoi thieu `tenant_id`.
+     - Khi SSE gap loi qua 3 lan, he thong chuyen sang fallback polling 5s lien tuc lam tram trong hoa tinh trang qua tai.
+- Cac giai phap da thuc hien:
+  1. Toi uu Backend (`chatservice-main/application/controllers/api_zalo.py`):
+     - Bo sung tham so `limit=100` (mac dinh) cho `zalo_list_conversations`. Sap xep `valid_items` theo `updated_at` giam dan truoc khi lay top `limit` cuoc tro chuyen gan nhat.
+     - Dat `"tinodeTopic": None` va `"messages": []` trong payload listing (chi can `lastMsg`, `updatedAt`, `badge`, metadata; lich su tin nhan day du chi tai khi nguoi dung mo cuoc tro chuyen qua API messages rieng).
+     - Giam kich thuoc payload tu 2.6 MB xuong con ~30 KB (giam hon 85 lan tai nguyen mang va CPU).
+  2. Sửa triệt để lỗi "topic not found (404)" trong `src/app/App.jsx`:
+     - Dat `tinodeTopic: undefined` cho toan bo phong Zalo OA va Livechat.
+     - Them chan `isOmnichannelRoom` trong `queueConversationLatestScroll`, `loadEarlierHistory`, va `completeUnreadBoundary`, ngan chan tuyet doi viec goi SDK Tinode tren cac phong kenh ngoai.
+  3. Hoan thien Realtime Service (`src/features/chat/services/`):
+     - Trong `chatManagementService.js`: Export getter `apiBase` va `tenantId` dong tu phien dang nhap `activeSessionTenantId()`.
+     - Trong `omnichannelRealtimeService.js`: Export `isOmnichannelStreamConnected()`, tro stream URL chuan ve Chatmgt API backend.
+     - Trong `App.jsx`: Khi stream SSE dang ket noi on dinh, tam dung hoan toan fallback polling (`if (isOmnichannelStreamConnected()) return;`). Khi SSE bi ngat, polling chay gian cach nhe nhang 15s voi `limit: 50` va bao toan tin nhan cu trong RAM, cham dut hoan toan hien tuong do/lag.
+
+
 ## 2026-10-11-03 - Hoan tat deploy ViChat Web Full-Stack len Production Server va dong goi APK tren o D::
 
 - Thoi gian: 2026-10-11 12:20 (Asia/Saigon)
