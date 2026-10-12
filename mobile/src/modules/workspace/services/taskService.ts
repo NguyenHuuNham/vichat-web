@@ -12,6 +12,9 @@ export function normalizeTask(raw: any = {}): TaskItem {
   const participants = Array.isArray(raw.participants) ? raw.participants : [];
   const assignee = participants.find((p: any) => p.role === 'ASSIGNEE') || participants[0];
 
+  const collabEntries = participants.filter((p: any) => p.role === 'COLLABORATOR');
+  const approverEntry = participants.find((p: any) => p.role === 'APPROVER');
+
   return {
     id: String(raw.id || ''),
     title: String(raw.title || ''),
@@ -23,9 +26,17 @@ export function normalizeTask(raw: any = {}): TaskItem {
     createdAt: parseTimestamp(raw.createdAt || raw.created_at),
     updatedAt: parseTimestamp(raw.updatedAt || raw.updated_at),
     ownerId: String(raw.ownerId || raw.owner_id || raw.createdBy || raw.created_by || ''),
-    ownerName: String(raw.ownerName || raw.owner_name || raw.creatorName || raw.creator_name || ''),
+    ownerName: String(raw.ownerName || raw.owner_name || raw.creatorName || raw.creator_name || raw.owner?.name || ''),
     assigneeId: assignee ? String(assignee.accountId || assignee.account_id || assignee.id || '') : null,
-    assigneeName: assignee ? String(assignee.name || assignee.fullName || assignee.full_name || '') : null,
+    assigneeName: assignee ? String(assignee.name || assignee.fullName || assignee.full_name || assignee.account?.name || '') : null,
+    collaboratorIds: collabEntries.map((p: any) => String(p.accountId || p.account_id || p.id || '')),
+    collaborators: collabEntries.map((p: any) => ({
+      id: String(p.accountId || p.account_id || p.id || ''),
+      name: String(p.name || p.fullName || p.full_name || p.account?.name || 'Đồng nghiệp'),
+      avatar: p.avatar || p.account?.avatar || null,
+    })),
+    approverId: approverEntry ? String(approverEntry.accountId || approverEntry.account_id || approverEntry.id || '') : null,
+    approverName: approverEntry ? String(approverEntry.name || approverEntry.fullName || approverEntry.full_name || approverEntry.account?.name || '') : null,
     groupName: String(props.group_name || props.source_conversation_name || 'Nhóm mặc định'),
     subtasks: Array.isArray(props.checklist)
       ? props.checklist.map((item: any, idx: number) => ({
@@ -62,14 +73,28 @@ export const taskService = {
       due_at: payload.dueAt || null,
       properties: {
         source_conversation_name: payload.groupName?.trim() || 'Nhóm mặc định',
+        group_name: payload.groupName?.trim() || 'Nhóm mặc định',
         checklist: (payload.subtasks || []).map(t => String(t || '').trim()).filter(Boolean),
       },
     };
 
+    const participants: Array<{ account_id: string; role: string }> = [];
     if (payload.assigneeId) {
-      body.participants = [
-        { account_id: payload.assigneeId, role: 'ASSIGNEE' },
-      ];
+      participants.push({ account_id: payload.assigneeId, role: 'ASSIGNEE' });
+    }
+    if (payload.collaboratorIds && payload.collaboratorIds.length > 0) {
+      payload.collaboratorIds.forEach(cId => {
+        if (cId !== payload.assigneeId) {
+          participants.push({ account_id: cId, role: 'COLLABORATOR' });
+        }
+      });
+    }
+    if (payload.approverId && payload.approverId !== payload.assigneeId) {
+      participants.push({ account_id: payload.approverId, role: 'APPROVER' });
+    }
+
+    if (participants.length > 0) {
+      body.participants = participants;
     }
 
     const created = await apiRequest('/api/v1/workspace/items', {

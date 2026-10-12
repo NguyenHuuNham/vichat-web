@@ -33,7 +33,7 @@ INITIAL_STATUS = {
 }
 
 PARTICIPANT_ROLES = {
-    "TASK": ("ASSIGNEE", "WATCHER"),
+    "TASK": ("ASSIGNEE", "COLLABORATOR", "APPROVER", "WATCHER"),
     "ANNOUNCEMENT": ("RECIPIENT",),
     "APPROVAL": ("APPROVER", "WATCHER"),
     "TICKET": ("ASSIGNEE", "WATCHER"),
@@ -48,7 +48,15 @@ DEFAULT_PARTICIPANT_ROLE = {
 }
 
 PROPERTY_FIELDS = {
-    "TASK": ("checklist", "progress", "source_conversation_name"),
+    "TASK": (
+        "checklist",
+        "subtasks",
+        "progress",
+        "source_conversation_name",
+        "group_name",
+        "task_hash",
+        "report_to_name",
+    ),
     "ANNOUNCEMENT": ("pinned", "requires_ack", "audience_label"),
     "APPROVAL": ("request_kind", "amount", "currency", "reference_code"),
     "TICKET": ("category", "sla_minutes", "requester_contact", "reference_code"),
@@ -148,14 +156,24 @@ def sanitize_properties(item_type, value):
             if amount < 0 or amount > 10 ** 15:
                 raise WorkspaceValidationError("amount is outside the supported range.")
             properties[key] = amount
-        elif key in ("tags", "checklist"):
+        elif key in ("tags", "checklist", "subtasks"):
             if not isinstance(raw_value, list) or len(raw_value) > 100:
                 raise WorkspaceValidationError("{} must be a bounded list.".format(key))
-            properties[key] = [
-                _bounded_text(entry, key, 255)
-                for entry in raw_value
-                if str(entry or "").strip()
-            ]
+            sanitized_list = []
+            for entry in raw_value:
+                if isinstance(entry, dict):
+                    title = _bounded_text(entry.get("title") or entry.get("text"), key, 255)
+                    if title:
+                        sanitized_list.append({
+                            "id": str(entry.get("id") or len(sanitized_list) + 1),
+                            "title": title,
+                            "completed": bool(entry.get("completed") or entry.get("done")),
+                        })
+                else:
+                    text = _bounded_text(entry, key, 255)
+                    if text:
+                        sanitized_list.append(text)
+            properties[key] = sanitized_list
         else:
             max_length = 2000 if key in (
                 "endpoint", "meeting_url", "source_message_preview", "notes"
@@ -310,7 +328,7 @@ def allowed_actions(item, user_id, is_admin, participant_roles=()):
     roles = {str(role).upper() for role in participant_roles}
     creator = str(user_id) in (str(item.created_by or ""), str(item.owner_id or ""))
     actions = ["COMMENT"]
-    if item_type == "TASK" and (is_admin or creator or "ASSIGNEE" in roles):
+    if item_type == "TASK" and (is_admin or creator or "ASSIGNEE" in roles or "COLLABORATOR" in roles):
         if status in ("TODO", "BLOCKED"):
             actions.append("START")
         if status in ("TODO", "IN_PROGRESS", "BLOCKED"):

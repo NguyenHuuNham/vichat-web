@@ -45,4 +45,9 @@ chatservice-main/.env
 outputs/
 analysis_*.md
 scratch/
+# Temporary deployment scripts and local artifacts
+deploy-*.sh
+verify-*.sh
+build_apk_*.bat
+scripts/deploy-*.sh
 #

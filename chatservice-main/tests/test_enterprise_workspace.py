@@ -121,8 +121,39 @@ class EnterpriseWorkspacePermissionTests(unittest.TestCase):
         actions = allowed_actions(task, "assignee", False, ["ASSIGNEE"])
         self.assertIn("START", actions)
         self.assertEqual(transition_for_action(task, "START", actions), "IN_PROGRESS")
+        collaborator_actions = allowed_actions(task, "collaborator", False, ["COLLABORATOR"])
+        self.assertIn("START", collaborator_actions)
+        self.assertIn("COMPLETE", collaborator_actions)
         with self.assertRaises(WorkspaceValidationError):
             transition_for_action(task, "ARCHIVE", actions)
+
+    def test_task_supports_collaborators_and_subtasks(self):
+        participants = normalize_participants("TASK", {
+            "participants": [
+                {"account_id": "u1", "role": "assignee"},
+                {"account_id": "u2", "role": "collaborator"},
+                {"account_id": "u3", "role": "approver"},
+            ],
+        })
+        self.assertEqual(participants, [
+            {"account_id": "u1", "role": "ASSIGNEE"},
+            {"account_id": "u2", "role": "COLLABORATOR"},
+            {"account_id": "u3", "role": "APPROVER"},
+        ])
+        task = validate_item_payload({
+            "type": "TASK",
+            "title": "Nhiệm vụ mới",
+            "properties": {
+                "subtasks": [
+                    {"id": "1", "title": "Phân tích", "completed": True},
+                    {"id": "2", "title": "Triển khai", "completed": False},
+                ],
+                "group_name": "Kỹ thuật",
+            },
+        })
+        self.assertEqual(task["properties"]["group_name"], "Kỹ thuật")
+        self.assertEqual(len(task["properties"]["subtasks"]), 2)
+        self.assertTrue(task["properties"]["subtasks"][0]["completed"])
 
 
 class EnterpriseWorkspaceContractTests(unittest.TestCase):

@@ -15,6 +15,8 @@ describe('normalizeTask', () => {
       ownerName: 'Nguyễn Hữu Nhâm',
       participants: [
         { account_id: 'user-002', name: 'Đồng nghiệp', role: 'ASSIGNEE' },
+        { account_id: 'user-003', name: 'Nguyễn Văn Phối Hợp', role: 'COLLABORATOR' },
+        { account_id: 'user-004', name: 'Sếp Duyệt', role: 'APPROVER' },
       ],
       properties: {
         group_name: 'Dự án ViChat 2026',
@@ -37,6 +39,9 @@ describe('normalizeTask', () => {
     expect(task.groupName).toBe('Dự án ViChat 2026');
     expect(task.assigneeId).toBe('user-002');
     expect(task.assigneeName).toBe('Đồng nghiệp');
+    expect(task.collaborators).toHaveLength(1);
+    expect(task.collaborators[0].name).toBe('Nguyễn Văn Phối Hợp');
+    expect(task.approverName).toBe('Sếp Duyệt');
     expect(task.subtasks).toHaveLength(2);
     expect(task.subtasks[0].completed).toBe(true);
     expect(task.subtasks[1].completed).toBe(false);

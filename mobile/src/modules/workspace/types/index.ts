@@ -7,6 +7,12 @@ export interface TaskSubtask {
   completed: boolean;
 }
 
+export interface TaskCollaborator {
+  id: string;
+  name: string;
+  avatar?: string | null;
+}
+
 export interface TaskItem {
   id: string;
   title: string;
@@ -21,6 +27,10 @@ export interface TaskItem {
   ownerName: string;
   assigneeId: string | null;
   assigneeName: string | null;
+  collaboratorIds: string[];
+  collaborators: TaskCollaborator[];
+  approverId: string | null;
+  approverName: string | null;
   groupName: string;
   subtasks: TaskSubtask[];
   version: number;
@@ -68,5 +78,7 @@ export interface CreateTaskPayload {
   groupName?: string;
   assigneeId?: string | null;
   assigneeName?: string | null;
+  collaboratorIds?: string[];
+  approverId?: string | null;
   subtasks?: string[];
 }

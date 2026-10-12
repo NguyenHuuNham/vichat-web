@@ -3,12 +3,19 @@ import useDialogFocusTrap from '../../../components/useDialogFocusTrap';
 import {
   ENTERPRISE_STATUSES,
   ENTERPRISE_TYPES,
+  PARTICIPANT_ROLE_LABELS,
   enterpriseWorkspaceService,
+  filterWorkspaceTasks,
   formatWorkspaceDate,
+  groupWorkspaceTasks,
   mergeWorkspaceProperties,
+  normalizeTaskExtended,
   workspaceStatusLabel,
   workspaceTypeMeta,
 } from '../services/enterpriseWorkspaceService';
+import TaskCard from './TaskCard';
+import TaskCreateModal from './TaskCreateModal';
+import CompanyStaffMatrixView from './CompanyStaffMatrixView';
 import './enterpriseWorkspace.css';
 
 const INITIAL_STATUS = {
@@ -33,11 +40,6 @@ const ACTION_LABELS = {
 
 const PRIORITY_LABELS = {
   LOW: 'Thấp', NORMAL: 'Bình thường', HIGH: 'Cao', URGENT: 'Khẩn cấp',
-};
-
-const PARTICIPANT_ROLE_LABELS = {
-  ASSIGNEE: 'Người phụ trách', RECIPIENT: 'Người nhận', APPROVER: 'Người phê duyệt',
-  EDITOR: 'Biên tập viên', ATTENDEE: 'Người tham dự', OWNER: 'Phụ trách',
 };
 
 const PARTICIPANT_STATE_LABELS = {
@@ -167,10 +169,29 @@ function FormField({ label, wide = false, children }) {
   return <label className={wide ? 'wide' : ''}><span>{label}</span>{children}</label>;
 }
 
-export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: value => value, locale: 'vi-VN' }, taskSeed, onTaskSeedConsumed, onError, requestAppConfirmation = () => Promise.resolve(false) }) {
+export default function EnterpriseWorkspace({
+  user,
+  accounts = [],
+  copy = { t: value => value, locale: 'vi-VN' },
+  taskSeed,
+  onTaskSeedConsumed,
+  onError,
+  requestAppConfirmation = () => Promise.resolve(false),
+  onOpenConversation,
+}) {
   const userId = String(user?.id || user?.uid || '');
   const isAdmin = ['admin', 'owner', 'superadmin'].includes(String(user?.role || '').toLowerCase());
-  const [activeType, setActiveType] = useState('OVERVIEW');
+
+  // View modes: 'MY_WORK' | 'COMPANY_MATRIX'
+  const [viewMode, setViewMode] = useState('MY_WORK');
+
+  // Navigation module or task scope:
+  // When activeType is 'TASK', taskScope determines the left filter (TODAY, ASSIGNED, COLLABORATING, CREATED, ALL, COMPLETED)
+  const [activeType, setActiveType] = useState('TASK');
+  const [taskScope, setTaskScope] = useState('TODAY');
+  const [taskStatusFilter, setTaskStatusFilter] = useState('ALL'); // 'ALL' | 'ONGOING' | 'COMPLETED'
+  const [taskGroupBy, setTaskGroupBy] = useState('DUE_DATE'); // 'DUE_DATE' | 'GROUP' | 'PRIORITY' | 'NONE'
+
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState(null);
   const [query, setQuery] = useState('');
@@ -184,6 +205,10 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   const [nextCursor, setNextCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  // Advanced Task Create Modal
+  const [isTaskCreateModalOpen, setIsTaskCreateModalOpen] = useState(false);
+
   const requestGenerationRef = useRef(0);
   const requestControllerRef = useRef(null);
   const nextCursorRef = useRef(null);
@@ -299,15 +324,52 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
     onTaskSeedConsumed?.();
   }, [copy, taskSeed, userId, onTaskSeedConsumed]);
 
-  const filteredItems = useMemo(() => {
-    const scoped = activeType === 'OVERVIEW' ? items : items.filter(item => item.type === activeType);
-    return [...scoped].sort((first, second) => new Date(second.updatedAt || 0) - new Date(first.updatedAt || 0));
+  // Extended tasks normalized with collaboration & due status
+  const normalizedTasks = useMemo(() => {
+    return items
+      .filter(item => item.type === 'TASK')
+      .map(item => normalizeTaskExtended(item, accounts, userId));
+  }, [items, accounts, userId]);
+
+  // Tasks counts for left subnav badges
+  const taskCounts = useMemo(() => {
+    const today = normalizedTasks.filter(t => t.isMyTodayTask).length;
+    const assigned = normalizedTasks.filter(t => t.isAssignedToMe && t.status !== 'DONE' && t.status !== 'CANCELLED').length;
+    const collaborating = normalizedTasks.filter(t => t.isCollaboratingWithMe && t.status !== 'DONE' && t.status !== 'CANCELLED').length;
+    const created = normalizedTasks.filter(t => t.isCreatedByMe).length;
+    const completed = normalizedTasks.filter(t => t.status === 'DONE' || t.status === 'CANCELLED').length;
+    const total = normalizedTasks.length;
+    return { today, assigned, collaborating, created, completed, total };
+  }, [normalizedTasks]);
+
+  // Filtered tasks for current board view
+  const currentFilteredTasks = useMemo(() => {
+    return filterWorkspaceTasks(normalizedTasks, {
+      scope: taskScope,
+      statusFilter: taskStatusFilter,
+      query: query.trim(),
+    });
+  }, [normalizedTasks, taskScope, taskStatusFilter, query]);
+
+  // Grouped tasks
+  const groupedTasks = useMemo(() => {
+    return groupWorkspaceTasks(currentFilteredTasks, taskGroupBy);
+  }, [currentFilteredTasks, taskGroupBy]);
+
+  // For non-task enterprise types (Wiki, Announcements, etc.)
+  const filteredNonTaskItems = useMemo(() => {
+    if (activeType === 'TASK' || activeType === 'OVERVIEW') return [];
+    return items.filter(item => item.type === activeType);
   }, [activeType, items]);
 
   const typeOptions = ENTERPRISE_TYPES.filter(type => type.value !== 'INTEGRATION' || isAdmin);
 
   const openCreate = type => {
-    setForm(emptyForm(type, userId));
+    if (type === 'TASK') {
+      setIsTaskCreateModalOpen(true);
+    } else {
+      setForm(emptyForm(type, userId));
+    }
     setNotice('');
   };
 
@@ -352,6 +414,55 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
       else reportError(error);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Submit from TaskCreateModal
+  const handleCreateTaskFromModal = async payload => {
+    try {
+      const created = await enterpriseWorkspaceService.createItem(payload);
+      setNotice(copy.t('Đã giao công việc thành công.'));
+      await refresh({ background: true });
+      if (payload.createChatGroup && onOpenConversation) {
+        handleOpenChat(normalizeTaskExtended(created, accounts, userId));
+      }
+    } catch (error) {
+      reportError(error);
+    }
+  };
+
+  // Toggle complete nhanh từ TaskCard
+  const handleToggleComplete = async task => {
+    const isCompleted = task.status === 'DONE';
+    const action = isCompleted ? 'REOPEN' : 'COMPLETE';
+    setActionBusy(action);
+    try {
+      await enterpriseWorkspaceService.applyAction(task.id, action, '', task.version);
+      await refresh({ background: true });
+    } catch (error) {
+      if (error?.status === 409) await reloadAfterConflict(task.id);
+      else reportError(error);
+    } finally {
+      setActionBusy('');
+    }
+  };
+
+  // 1-Click Chat action
+  const handleOpenChat = task => {
+    if (onOpenConversation) {
+      const participantIds = [
+        task.assignee?.id,
+        task.creator?.id,
+        ...(task.collaborators || []).map(c => c.id),
+      ].filter(Boolean);
+
+      onOpenConversation(task.conversationId || task.source_conversation_name, {
+        title: task.title,
+        conversationId: task.conversationId,
+        participantIds: [...new Set(participantIds)],
+      });
+    } else {
+      setNotice(copy.t(`Đã sẵn sàng kết nối trao đổi cho: "${task.title}".`));
     }
   };
 
@@ -404,189 +515,699 @@ export default function EnterpriseWorkspace({ user, accounts = [], copy = { t: v
   };
 
   const selectedMeta = selectedItem ? workspaceTypeMeta(selectedItem.type) : null;
-  const createType = activeType === 'OVERVIEW' ? 'TASK' : activeType;
+  const selectedExtendedTask = useMemo(() => {
+    if (!selectedItem || selectedItem.type !== 'TASK') return null;
+    return normalizeTaskExtended(selectedItem, accounts, userId);
+  }, [selectedItem, accounts, userId]);
 
   return (
     <div className="enterprise-workspace">
+      {/* THANH COMMAND BAR TRÊN CÙNG */}
       <header className="enterprise-commandbar">
+        {/* Tìm kiếm */}
         <div className="enterprise-search">
           <i className="fa-solid fa-magnifying-glass"></i>
-          <input name="workspace-search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={copy.t('Tìm công việc, quy trình, ticket, sự kiện…')} aria-label={copy.t('Tìm trong Workspace')} />
+          <input
+            name="workspace-search"
+            type="search"
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder={copy.t('Tìm công việc, nhân sự, dự án, quy trình…')}
+            aria-label={copy.t('Tìm trong Workspace')}
+          />
           {loading && <i className="fa-solid fa-spinner fa-spin"></i>}
         </div>
-        <button type="button" className="enterprise-create-main" onClick={() => openCreate(createType)} disabled={!typeCanCreate(createType, isAdmin)}>
-          <i className="fa-solid fa-plus"></i><span>{copy.t('Tạo mới')}</span>
+
+        {/* Nút chuyển đổi View Mode (Chỉ hiển thị cho Sếp / Admin) */}
+        {isAdmin && (
+          <div className="workspace-view-switcher">
+            <button
+              type="button"
+              className={`view-switch-btn ${viewMode === 'MY_WORK' ? 'active' : ''}`}
+              onClick={() => setViewMode('MY_WORK')}
+              title={copy.t('Bảng công việc cá nhân')}
+            >
+              <i className="fa-solid fa-user-check"></i>
+              <span>{copy.t('Việc của tôi')}</span>
+            </button>
+            <button
+              type="button"
+              className={`view-switch-btn ${viewMode === 'COMPANY_MATRIX' ? 'active' : ''}`}
+              onClick={() => setViewMode('COMPANY_MATRIX')}
+              title={copy.t('Góc nhìn Toàn cảnh công ty cho Sếp')}
+            >
+              <i className="fa-solid fa-building-user"></i>
+              <span>{copy.t('Toàn cảnh công ty')}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Nút tạo mới nhanh */}
+        <button
+          type="button"
+          className="enterprise-create-main"
+          onClick={() => openCreate(activeType === 'OVERVIEW' ? 'TASK' : activeType)}
+          disabled={!typeCanCreate(activeType === 'OVERVIEW' ? 'TASK' : activeType, isAdmin)}
+        >
+          <i className="fa-solid fa-plus"></i>
+          <span>{copy.t('Giao việc mới')}</span>
         </button>
       </header>
 
-      <nav className="enterprise-tabs" aria-label={copy.t('Module doanh nghiệp')}>
-        <button type="button" className={activeType === 'OVERVIEW' ? 'active' : ''} onClick={() => setActiveType('OVERVIEW')}>
-          <i className="fa-solid fa-table-cells-large"></i><span>{copy.t('Tổng quan')}</span>
-        </button>
-        {typeOptions.map(type => (
-          <button type="button" key={type.value} className={activeType === type.value ? 'active' : ''} onClick={() => setActiveType(type.value)}>
-            <i className={'fa-solid ' + type.icon}></i><span>{copy.t(type.label)}</span>
-            {summary?.byType?.[type.value] > 0 && <b>{summary.byType[type.value]}</b>}
+      {/* THÔNG BÁO NOTICE NẾU CÓ */}
+      {notice && (
+        <div className="enterprise-notice">
+          <i className="fa-solid fa-circle-info"></i>
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice('')}>
+            <i className="fa-solid fa-xmark"></i>
           </button>
-        ))}
-      </nav>
-
-      {notice && <div className="enterprise-notice"><i className="fa-solid fa-circle-info"></i><span>{notice}</span><button type="button" onClick={() => setNotice('')}><i className="fa-solid fa-xmark"></i></button></div>}
-
-      {activeType === 'OVERVIEW' && (
-        <section className="enterprise-overview">
-          <div className="enterprise-hero-card">
-            <span className="enterprise-eyebrow">{copy.t('TRUNG TÂM ĐIỀU HÀNH NỘI BỘ')}</span>
-            <h3>{copy.t('Mọi việc cần làm, quyết định và tri thức nằm trong một luồng.')}</h3>
-            <p>{copy.t('Workspace tách biệt khỏi dữ liệu tin nhắn Tinode, nhưng vẫn liên kết công việc với đúng cuộc trò chuyện.')}</p>
-            <button type="button" onClick={() => openCreate('TASK')}><i className="fa-solid fa-bolt"></i> {copy.t('Giao việc nhanh')}</button>
-          </div>
-          <div className="enterprise-metric-grid">
-            <article><span>{copy.t('Đang theo dõi')}</span><strong>{summary?.total || 0}</strong><i className="fa-solid fa-layer-group"></i></article>
-            <article className="warning"><span>{copy.t('Sắp đến hạn')}</span><strong>{summary?.dueSoon || 0}</strong><i className="fa-solid fa-hourglass-half"></i></article>
-            <article className="danger"><span>{copy.t('Quá hạn')}</span><strong>{summary?.overdue || 0}</strong><i className="fa-solid fa-triangle-exclamation"></i></article>
-          </div>
-        </section>
+        </div>
       )}
 
-      <section className="enterprise-content-grid">
-        <div className="enterprise-list-pane">
-          <div className="enterprise-section-title">
-            <div><strong>{activeType === 'OVERVIEW' ? copy.t('Hoạt động gần đây') : copy.t(workspaceTypeMeta(activeType).label)}</strong><small>{filteredItems.length} {copy.t('mục có quyền truy cập')}</small></div>
-            {activeType !== 'OVERVIEW' && typeCanCreate(activeType, isAdmin) && <button type="button" onClick={() => openCreate(activeType)}><i className="fa-solid fa-plus"></i> {copy.t('Thêm')}</button>}
-          </div>
-          {loading && items.length === 0 ? (
-            <div className="enterprise-empty"><i className="fa-solid fa-spinner fa-spin"></i><span>{copy.t('Đang đồng bộ Workspace...')}</span></div>
-          ) : filteredItems.length === 0 ? (
-            <div className="enterprise-empty"><i className="fa-regular fa-folder-open"></i><span>{copy.t('Chưa có dữ liệu trong mục này.')}</span>{typeCanCreate(createType, isAdmin) && <button type="button" onClick={() => openCreate(createType)}>{copy.t('Tạo mục đầu tiên')}</button>}</div>
-          ) : (
-            <div className="enterprise-item-list">
-              {filteredItems.map(item => {
-                const meta = workspaceTypeMeta(item.type);
-                return (
-                  <button type="button" key={item.id} className={'enterprise-item-card' + (selectedItem?.id === item.id ? ' active' : '')} onClick={() => openItem(item)}>
-                    <span className={'enterprise-type-icon ' + meta.color}><i className={'fa-solid ' + meta.icon}></i></span>
-                    <span className="enterprise-item-copy">
-                      <span className="enterprise-item-topline"><b>{copy.t(meta.label)}</b><time>{formatWorkspaceDate(item.updatedAt, { locale: copy.locale })}</time></span>
-                      <strong>{item.title}</strong>
-                      <small>{item.description || copy.t('Không có mô tả')}</small>
-                      <span className="enterprise-item-footer">
-                        <em className={'status ' + item.status.toLowerCase()}>{copy.t(workspaceStatusLabel(item.status))}</em>
-                        {item.dueAt && <em><i className="fa-regular fa-clock"></i> {formatWorkspaceDate(item.dueAt, { locale: copy.locale })}</em>}
-                        <em>{item.participants.length} {copy.t('người')}</em>
-                      </span>
-                    </span>
-                    <i className="fa-solid fa-chevron-right enterprise-chevron"></i>
-                  </button>
-                );
-              })}
+      {/* CHẾ ĐỘ XEM 1: TOÀN CẢNH CÔNG TY (COMMAND CENTER CHO SẾP) */}
+      {viewMode === 'COMPANY_MATRIX' ? (
+        <CompanyStaffMatrixView
+          tasks={normalizedTasks}
+          accounts={accounts}
+          onSelectTask={task => openItem(task)}
+          onToggleComplete={handleToggleComplete}
+          onOpenChat={handleOpenChat}
+          copy={copy}
+        />
+      ) : (
+        /* CHẾ ĐỘ XEM 2: TASK-CENTRIC WORKBOARD & AGENDA CHO NHÂN VIÊN */
+        <div className="task-centric-layout">
+          {/* CỘT ĐIỀU HƯỚNG TRÁI (SIDEBAR SUBNAV GIỐNG MOBILE) */}
+          <aside className="task-subnav-sidebar" aria-label={copy.t('Điều hướng tác vụ')}>
+            <div className="subnav-section-title">
+              <i className="fa-solid fa-calendar-check"></i>
+              <span>{copy.t('CÔNG VIỆC CỦA TÔI')}</span>
             </div>
-          )}
-          {hasMore && <button type="button" className="enterprise-load-more" onClick={loadMore} disabled={loading || loadingMore}>
-            <i className={'fa-solid ' + (loadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down')}></i>
-            {loadingMore ? copy.t('Đang tải thêm...') : copy.t('Tải thêm')}
-          </button>}
-        </div>
 
-        <aside className={'enterprise-detail-pane' + (selectedItem ? ' open' : '')}>
-          {!selectedItem ? (
-            <div className="enterprise-detail-placeholder"><span><i className="fa-solid fa-arrow-pointer"></i></span><strong>{copy.t('Chọn một mục để xem chi tiết')}</strong><small>{copy.t('Lịch sử thao tác, người phụ trách và trạng thái được đồng bộ tại đây.')}</small></div>
-          ) : (
-            <>
-              <div className="enterprise-detail-header">
-                <span className={'enterprise-type-icon ' + selectedMeta.color}><i className={'fa-solid ' + selectedMeta.icon}></i></span>
-                <div><span>{copy.t(selectedMeta.label)}</span><h3>{selectedItem.title}</h3></div>
-                <button type="button" onClick={() => setSelectedItem(null)} aria-label={copy.t('Đóng chi tiết')}><i className="fa-solid fa-xmark"></i></button>
-              </div>
-              <div className="enterprise-detail-scroll">
-                <div className="enterprise-detail-badges">
-                  <span className={'status ' + selectedItem.status.toLowerCase()}>{copy.t(workspaceStatusLabel(selectedItem.status))}</span>
-                  <span className={'priority ' + selectedItem.priority.toLowerCase()}>{localizedWorkspaceValue(selectedItem.priority, PRIORITY_LABELS, copy)}</span>
-                  <span><i className="fa-solid fa-shield-halved"></i> {copy.t(selectedItem.visibility === 'COMPANY' ? 'Toàn công ty' : 'Người liên quan')}</span>
-                </div>
-                {selectedItem.description && <p className="enterprise-description">{selectedItem.description}</p>}
-                <dl className="enterprise-detail-facts">
-                  <div><dt>{copy.t('Phụ trách')}</dt><dd><Avatar account={selectedItem.owner} small /> {selectedItem.owner?.name || copy.t('Chưa gán')}</dd></div>
-                  <div><dt>{copy.t('Hạn xử lý')}</dt><dd>{formatWorkspaceDate(selectedItem.dueAt, { locale: copy.locale })}</dd></div>
-                  {selectedItem.startsAt && <div><dt>{copy.t('Bắt đầu')}</dt><dd>{formatWorkspaceDate(selectedItem.startsAt, { locale: copy.locale })}</dd></div>}
-                  {selectedItem.endsAt && <div><dt>{copy.t('Kết thúc')}</dt><dd>{formatWorkspaceDate(selectedItem.endsAt, { locale: copy.locale })}</dd></div>}
-                </dl>
-                {selectedItem.participants.length > 0 && (
-                  <div className="enterprise-participants"><h4>{copy.t('Người liên quan')}</h4><div>{selectedItem.participants.map(participant => (
-                    <span key={participant.id}><Avatar account={participant.account} small /><b>{participant.account?.name || participant.accountId}</b><small>{localizedWorkspaceValue(participant.role, PARTICIPANT_ROLE_LABELS, copy)} · {localizedWorkspaceValue(participant.state, PARTICIPANT_STATE_LABELS, copy)}</small></span>
-                  ))}</div></div>
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'TODAY' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('TODAY'); }}
+            >
+              <span className="btn-icon star"><i className="fa-solid fa-star"></i></span>
+              <span className="btn-label">{copy.t('Hôm nay làm gì')}</span>
+              {taskCounts.today > 0 && <span className="subnav-badge warning">{taskCounts.today}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'ASSIGNED' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('ASSIGNED'); }}
+            >
+              <span className="btn-icon target"><i className="fa-solid fa-bullseye"></i></span>
+              <span className="btn-label">{copy.t('Được giao')}</span>
+              {taskCounts.assigned > 0 && <span className="subnav-badge">{taskCounts.assigned}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'COLLABORATING' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('COLLABORATING'); }}
+            >
+              <span className="btn-icon users"><i className="fa-solid fa-user-group"></i></span>
+              <span className="btn-label">{copy.t('Cùng phối hợp')}</span>
+              {taskCounts.collaborating > 0 && <span className="subnav-badge">{taskCounts.collaborating}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'CREATED' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('CREATED'); }}
+            >
+              <span className="btn-icon creator"><i className="fa-solid fa-paper-plane"></i></span>
+              <span className="btn-label">{copy.t('Tôi đã giao')}</span>
+              {taskCounts.created > 0 && <span className="subnav-badge">{taskCounts.created}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'ALL' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('ALL'); }}
+            >
+              <span className="btn-icon list"><i className="fa-solid fa-list-ul"></i></span>
+              <span className="btn-label">{copy.t('Tất cả tác vụ')}</span>
+              <span className="subnav-badge muted">{taskCounts.total}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`task-subnav-btn ${activeType === 'TASK' && taskScope === 'COMPLETED' ? 'active' : ''}`}
+              onClick={() => { setActiveType('TASK'); setTaskScope('COMPLETED'); }}
+            >
+              <span className="btn-icon done"><i className="fa-solid fa-circle-check"></i></span>
+              <span className="btn-label">{copy.t('Đã hoàn thành')}</span>
+              <span className="subnav-badge muted">{taskCounts.completed}</span>
+            </button>
+
+            {/* PHẦN MODULE DOANH NGHIỆP KHÁC */}
+            <div className="subnav-divider"></div>
+            <div className="subnav-section-title">
+              <i className="fa-solid fa-cubes"></i>
+              <span>{copy.t('MODULE DOANH NGHIỆP')}</span>
+            </div>
+
+            {typeOptions.filter(type => type.value !== 'TASK').map(type => (
+              <button
+                type="button"
+                key={type.value}
+                className={`task-subnav-btn module-btn ${activeType === type.value ? 'active' : ''}`}
+                onClick={() => setActiveType(type.value)}
+              >
+                <span className={`btn-icon ${type.color}`}>
+                  <i className={`fa-solid ${type.icon}`}></i>
+                </span>
+                <span className="btn-label">{copy.t(type.label)}</span>
+                {summary?.byType?.[type.value] > 0 && (
+                  <span className="subnav-badge muted">{summary.byType[type.value]}</span>
                 )}
-                <div className="enterprise-actions">
-                  {selectedItem.allowedActions.filter(action => action !== 'COMMENT').map(action => {
-                    const label = ACTION_LABELS[action] || [action, 'fa-bolt'];
-                    return <button type="button" key={action} className={['REJECT', 'CANCEL', 'ARCHIVE'].includes(action) ? 'danger' : ''} onClick={() => applyAction(action)} disabled={Boolean(actionBusy)}><i className={'fa-solid ' + (actionBusy === action ? 'fa-spinner fa-spin' : label[1])}></i>{copy.t(label[0])}</button>;
-                  })}
-                  {selectedItem.canEdit && <button type="button" onClick={() => setForm(formForItem(selectedItem, userId))}><i className="fa-solid fa-pen"></i>{copy.t('Chỉnh sửa')}</button>}
-                  {selectedItem.canEdit && <button type="button" className="danger ghost" onClick={archiveItem} disabled={Boolean(actionBusy)}><i className="fa-solid fa-box-archive"></i>{copy.t('Ẩn khỏi Workspace')}</button>}
-                </div>
-                <form className="enterprise-comment" autoComplete="off" onSubmit={event => { event.preventDefault(); if (comment.trim()) applyAction('COMMENT'); }}>
-                  <input name="workspace-comment" value={comment} onChange={event => setComment(event.target.value)} maxLength="5000" placeholder={copy.t('Thêm trao đổi hoặc ghi chú…')} aria-label={copy.t('Thêm trao đổi hoặc ghi chú')} />
-                  <button type="submit" disabled={!comment.trim() || Boolean(actionBusy)}><i className="fa-solid fa-paper-plane"></i></button>
-                </form>
-                <div className="enterprise-activity"><h4>{copy.t('Nhật ký hoạt động')}</h4>{selectedItem.activity.length === 0 ? <small>{copy.t('Chưa có hoạt động.')}</small> : selectedItem.activity.map(activity => (
-                  <article key={activity.id}><span><i className="fa-solid fa-clock-rotate-left"></i></span><div><strong>{activity.actor?.name || copy.t('Hệ thống')} · {copy.t(ACTION_LABELS[activity.action]?.[0] || ACTIVITY_LABELS[activity.action] || activity.action)}</strong>{activity.comment && <p>{activity.comment}</p>}<time>{formatWorkspaceDate(activity.createdAt, { locale: copy.locale })}</time></div></article>
-                ))}</div>
-              </div>
-            </>
-          )}
-        </aside>
-      </section>
+              </button>
+            ))}
+          </aside>
 
+          {/* KHUNG NỘI DUNG CHÍNH (BOARD / LIST) */}
+          <main className="task-main-board-pane">
+            {activeType === 'TASK' ? (
+              <>
+                {/* TOOLBAR BỘ LỌC TRÊN BOARD */}
+                <div className="task-board-filter-toolbar">
+                  {/* Lọc trạng thái (Tất cả / Đang làm / Đã xong) */}
+                  <div className="filter-pill-group">
+                    <button
+                      type="button"
+                      className={`filter-pill ${taskStatusFilter === 'ALL' ? 'active' : ''}`}
+                      onClick={() => setTaskStatusFilter('ALL')}
+                    >
+                      {copy.t('Tất cả')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${taskStatusFilter === 'ONGOING' ? 'active' : ''}`}
+                      onClick={() => setTaskStatusFilter('ONGOING')}
+                    >
+                      {copy.t('Đang làm')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${taskStatusFilter === 'COMPLETED' ? 'active' : ''}`}
+                      onClick={() => setTaskStatusFilter('COMPLETED')}
+                    >
+                      {copy.t('Đã xong')}
+                    </button>
+                  </div>
+
+                  {/* Gom nhóm (Group By) */}
+                  <div className="group-by-selector">
+                    <span className="group-by-label">
+                      <i className="fa-solid fa-layer-group"></i> {copy.t('Gom nhóm')}:
+                    </span>
+                    <select
+                      value={taskGroupBy}
+                      onChange={e => setTaskGroupBy(e.target.value)}
+                      aria-label={copy.t('Gom nhóm tác vụ')}
+                    >
+                      <option value="DUE_DATE">{copy.t('Theo Hạn chót')}</option>
+                      <option value="GROUP">{copy.t('Theo Dự án / Nhóm')}</option>
+                      <option value="PRIORITY">{copy.t('Theo Mức ưu tiên')}</option>
+                      <option value="NONE">{copy.t('Không phân nhóm')}</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* DANH SÁCH CÁC NHÓM CÔNG VIỆC */}
+                <div className="task-groups-container">
+                  {loading && items.length === 0 ? (
+                    <div className="enterprise-empty">
+                      <i className="fa-solid fa-spinner fa-spin"></i>
+                      <span>{copy.t('Đang đồng bộ công việc...')}</span>
+                    </div>
+                  ) : currentFilteredTasks.length === 0 ? (
+                    <div className="enterprise-empty">
+                      <i className="fa-regular fa-calendar-check"></i>
+                      <span>
+                        {taskScope === 'TODAY'
+                          ? copy.t('Tuyệt vời! Bạn không còn công việc nào cần xử lý hôm nay.')
+                          : copy.t('Không có công việc nào trong danh mục này.')}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-create-task-empty"
+                        onClick={() => setIsTaskCreateModalOpen(true)}
+                      >
+                        <i className="fa-solid fa-plus"></i> {copy.t('Tạo công việc mới')}
+                      </button>
+                    </div>
+                  ) : (
+                    groupedTasks.map(group => (
+                      <section key={group.id} className="task-group-section">
+                        <div className="task-group-header">
+                          <div className="group-header-left">
+                            <span className={`group-header-dot ${group.tone || 'neutral'}`}></span>
+                            <h4 className="group-header-title">{group.title}</h4>
+                            <span className="group-header-badge">{group.tasks.length}</span>
+                          </div>
+                        </div>
+
+                        <div className="task-cards-list">
+                          {group.tasks.map(task => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              isSelected={selectedItem?.id === task.id}
+                              onSelect={t => openItem(t)}
+                              onToggleComplete={handleToggleComplete}
+                              onOpenChat={handleOpenChat}
+                              copy={copy}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))
+                  )}
+
+                  {hasMore && (
+                    <button
+                      type="button"
+                      className="enterprise-load-more"
+                      onClick={loadMore}
+                      disabled={loading || loadingMore}
+                    >
+                      <i className={`fa-solid ${loadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`}></i>
+                      {loadingMore ? copy.t('Đang tải thêm...') : copy.t('Tải thêm')}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* DANH SÁCH CHO CÁC MODULE DOANH NGHIỆP KHÁC (Wiki, Phê duyệt...) */
+              <div className="enterprise-list-pane">
+                <div className="enterprise-section-title">
+                  <div>
+                    <strong>{copy.t(workspaceTypeMeta(activeType).label)}</strong>
+                    <small>{filteredNonTaskItems.length} {copy.t('mục có quyền truy cập')}</small>
+                  </div>
+                  {typeCanCreate(activeType, isAdmin) && (
+                    <button type="button" onClick={() => openCreate(activeType)}>
+                      <i className="fa-solid fa-plus"></i> {copy.t('Thêm')}
+                    </button>
+                  )}
+                </div>
+
+                {filteredNonTaskItems.length === 0 ? (
+                  <div className="enterprise-empty">
+                    <i className="fa-regular fa-folder-open"></i>
+                    <span>{copy.t('Chưa có dữ liệu trong mục này.')}</span>
+                    {typeCanCreate(activeType, isAdmin) && (
+                      <button type="button" onClick={() => openCreate(activeType)}>
+                        {copy.t('Tạo mục đầu tiên')}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="enterprise-item-list">
+                    {filteredNonTaskItems.map(item => {
+                      const meta = workspaceTypeMeta(item.type);
+                      return (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className={'enterprise-item-card' + (selectedItem?.id === item.id ? ' active' : '')}
+                          onClick={() => openItem(item)}
+                        >
+                          <span className={'enterprise-type-icon ' + meta.color}>
+                            <i className={'fa-solid ' + meta.icon}></i>
+                          </span>
+                          <span className="enterprise-item-copy">
+                            <span className="enterprise-item-topline">
+                              <b>{copy.t(meta.label)}</b>
+                              <time>{formatWorkspaceDate(item.updatedAt, { locale: copy.locale })}</time>
+                            </span>
+                            <strong>{item.title}</strong>
+                            <small>{item.description || copy.t('Không có mô tả')}</small>
+                            <span className="enterprise-item-footer">
+                              <em className={'status ' + item.status.toLowerCase()}>
+                                {copy.t(workspaceStatusLabel(item.status))}
+                              </em>
+                              {item.dueAt && (
+                                <em><i className="fa-regular fa-clock"></i> {formatWorkspaceDate(item.dueAt, { locale: copy.locale })}</em>
+                              )}
+                              <em>{item.participants.length} {copy.t('người')}</em>
+                            </span>
+                          </span>
+                          <i className="fa-solid fa-chevron-right enterprise-chevron"></i>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </main>
+
+          {/* CỘT CHI TIẾT (DETAIL DRAWER BÊN PHẢI) */}
+          <aside className={`enterprise-detail-pane ${selectedItem ? 'open' : ''}`}>
+            {!selectedItem ? (
+              <div className="enterprise-detail-placeholder">
+                <span><i className="fa-solid fa-arrow-pointer"></i></span>
+                <strong>{copy.t('Chọn một công việc để xem chi tiết')}</strong>
+                <small>{copy.t('Nhật ký làm việc, người phụ trách, phối hợp và tiến độ hiển thị tại đây.')}</small>
+              </div>
+            ) : (
+              <>
+                <div className="enterprise-detail-header">
+                  <span className={'enterprise-type-icon ' + selectedMeta.color}>
+                    <i className={'fa-solid ' + selectedMeta.icon}></i>
+                  </span>
+                  <div>
+                    <span>{copy.t(selectedMeta.label)}</span>
+                    <h3>{selectedItem.title}</h3>
+                  </div>
+                  <button type="button" onClick={() => setSelectedItem(null)} aria-label={copy.t('Đóng chi tiết')}>
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+
+                <div className="enterprise-detail-scroll">
+                  <div className="enterprise-detail-badges">
+                    <span className={'status ' + selectedItem.status.toLowerCase()}>
+                      {copy.t(workspaceStatusLabel(selectedItem.status))}
+                    </span>
+                    <span className={'priority ' + selectedItem.priority.toLowerCase()}>
+                      {localizedWorkspaceValue(selectedItem.priority, PRIORITY_LABELS, copy)}
+                    </span>
+                    <span>
+                      <i className="fa-solid fa-shield-halved"></i> {copy.t(selectedItem.visibility === 'COMPANY' ? 'Toàn công ty' : 'Người liên quan')}
+                    </span>
+                  </div>
+
+                  {selectedItem.description && (
+                    <p className="enterprise-description">{selectedItem.description}</p>
+                  )}
+
+                  {/* FACT SHEET MÓC NỐI NHÂN SỰ & THỜI HẠN */}
+                  <dl className="enterprise-detail-facts">
+                    {selectedExtendedTask ? (
+                      <>
+                        <div>
+                          <dt>{copy.t('Người giao việc')}</dt>
+                          <dd>
+                            <Avatar account={selectedExtendedTask.creator} small />
+                            <span>{selectedExtendedTask.creator?.name || copy.t('Hệ thống')}</span>
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>{copy.t('Phụ trách chính')}</dt>
+                          <dd>
+                            <Avatar account={selectedExtendedTask.assignee} small />
+                            <span>{selectedExtendedTask.assignee?.name || copy.t('Chưa gán')}</span>
+                          </dd>
+                        </div>
+                        {selectedExtendedTask.approver && (
+                          <div>
+                            <dt>{copy.t('Người duyệt')}</dt>
+                            <dd>
+                              <Avatar account={selectedExtendedTask.approver} small />
+                              <span>{selectedExtendedTask.approver.name}</span>
+                            </dd>
+                          </div>
+                        )}
+                        <div>
+                          <dt>{copy.t('Hạn hoàn thành')}</dt>
+                          <dd>{formatWorkspaceDate(selectedItem.dueAt, { locale: copy.locale })}</dd>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <dt>{copy.t('Phụ trách')}</dt>
+                          <dd><Avatar account={selectedItem.owner} small /> {selectedItem.owner?.name || copy.t('Chưa gán')}</dd>
+                        </div>
+                        <div>
+                          <dt>{copy.t('Hạn xử lý')}</dt>
+                          <dd>{formatWorkspaceDate(selectedItem.dueAt, { locale: copy.locale })}</dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+
+                  {/* CHECKLIST ĐẦU VIỆC CON TRONG DETAIL VIEW */}
+                  {selectedExtendedTask?.subtasks?.length > 0 && (
+                    <div className="enterprise-detail-subtasks-section">
+                      <h4>
+                        <i className="fa-regular fa-square-check"></i> {copy.t('Checklist đầu việc')} ({selectedExtendedTask.subtaskStats.completed}/{selectedExtendedTask.subtaskStats.total})
+                      </h4>
+                      <div className="detail-subtasks-list">
+                        {selectedExtendedTask.subtasks.map(st => (
+                          <div key={st.id} className="detail-subtask-item">
+                            <i className={`fa-regular ${st.completed ? 'fa-circle-check completed-icon' : 'fa-circle'}`}></i>
+                            <span className={st.completed ? 'subtask-done' : ''}>{st.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DANH SÁCH NGƯỜI LIÊN QUAN / CÙNG LÀM */}
+                  {selectedItem.participants.length > 0 && (
+                    <div className="enterprise-participants">
+                      <h4>{copy.t('Người liên quan & Phối hợp')}</h4>
+                      <div>
+                        {selectedItem.participants.map(participant => (
+                          <span key={participant.id}>
+                            <Avatar account={participant.account} small />
+                            <b>{participant.account?.name || participant.accountId}</b>
+                            <small>{localizedWorkspaceValue(participant.role, PARTICIPANT_ROLE_LABELS, copy)} · {localizedWorkspaceValue(participant.state, PARTICIPANT_STATE_LABELS, copy)}</small>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* NÚT THAO TÁC / HÀNH ĐỘNG */}
+                  <div className="enterprise-actions">
+                    {/* Nút 1-Click Thảo luận Chat */}
+                    {selectedExtendedTask && (
+                      <button
+                        type="button"
+                        className="btn-detail-chat"
+                        onClick={() => handleOpenChat(selectedExtendedTask)}
+                      >
+                        <i className="fa-regular fa-comment-dots"></i>
+                        {copy.t('Mở nhóm chat thảo luận')}
+                      </button>
+                    )}
+
+                    {selectedItem.allowedActions.filter(action => action !== 'COMMENT').map(action => {
+                      const label = ACTION_LABELS[action] || [action, 'fa-bolt'];
+                      return (
+                        <button
+                          type="button"
+                          key={action}
+                          className={['REJECT', 'CANCEL', 'ARCHIVE'].includes(action) ? 'danger' : ''}
+                          onClick={() => applyAction(action)}
+                          disabled={Boolean(actionBusy)}
+                        >
+                          <i className={'fa-solid ' + (actionBusy === action ? 'fa-spinner fa-spin' : label[1])}></i>
+                          {copy.t(label[0])}
+                        </button>
+                      );
+                    })}
+
+                    {selectedItem.canEdit && (
+                      <button type="button" onClick={() => setForm(formForItem(selectedItem, userId))}>
+                        <i className="fa-solid fa-pen"></i>{copy.t('Chỉnh sửa')}
+                      </button>
+                    )}
+                    {selectedItem.canEdit && (
+                      <button type="button" className="danger ghost" onClick={archiveItem} disabled={Boolean(actionBusy)}>
+                        <i className="fa-solid fa-box-archive"></i>{copy.t('Ẩn khỏi Workspace')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* BÌNH LUẬN / TRAO ĐỔI NHANH */}
+                  <form
+                    className="enterprise-comment"
+                    autoComplete="off"
+                    onSubmit={event => { event.preventDefault(); if (comment.trim()) applyAction('COMMENT'); }}
+                  >
+                    <input
+                      name="workspace-comment"
+                      value={comment}
+                      onChange={event => setComment(event.target.value)}
+                      maxLength="5000"
+                      placeholder={copy.t('Thêm trao đổi hoặc ghi chú…')}
+                      aria-label={copy.t('Thêm trao đổi hoặc ghi chú')}
+                    />
+                    <button type="submit" disabled={!comment.trim() || Boolean(actionBusy)}>
+                      <i className="fa-solid fa-paper-plane"></i>
+                    </button>
+                  </form>
+
+                  {/* NHẬT KÝ HOẠT ĐỘNG */}
+                  <div className="enterprise-activity">
+                    <h4>{copy.t('Nhật ký hoạt động')}</h4>
+                    {selectedItem.activity.length === 0 ? (
+                      <small>{copy.t('Chưa có hoạt động.')}</small>
+                    ) : (
+                      selectedItem.activity.map(activity => (
+                        <article key={activity.id}>
+                          <span><i className="fa-solid fa-clock-rotate-left"></i></span>
+                          <div>
+                            <strong>{activity.actor?.name || copy.t('Hệ thống')} · {copy.t(ACTION_LABELS[activity.action]?.[0] || ACTIVITY_LABELS[activity.action] || activity.action)}</strong>
+                            {activity.comment && <p>{activity.comment}</p>}
+                            <time>{formatWorkspaceDate(activity.createdAt, { locale: copy.locale })}</time>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {/* MODAL GIAO VIỆC NÂNG CAO (TASK-CENTRIC) */}
+      <TaskCreateModal
+        isOpen={isTaskCreateModalOpen}
+        onClose={() => setIsTaskCreateModalOpen(false)}
+        onSubmit={handleCreateTaskFromModal}
+        accounts={accounts}
+        currentUser={user}
+        copy={copy}
+      />
+
+      {/* FORM MODAL CHỈNH SỬA / TẠO CHO CÁC MODULE KHÁC */}
       {form && (
         <div className="enterprise-form-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) setForm(null); }}>
           <form ref={formDialogRef} className="enterprise-form-modal" autoComplete="off" role="dialog" aria-modal="true" aria-labelledby="enterprise-form-title" onSubmit={saveItem}>
-            <header><div><span>{copy.t(form.id ? 'CẬP NHẬT' : 'TẠO MỚI')}</span><h3 id="enterprise-form-title">{copy.t(workspaceTypeMeta(form.type).label)}</h3></div><button type="button" onClick={() => setForm(null)} disabled={saving} aria-label={copy.t('Đóng')}><i className="fa-solid fa-xmark"></i></button></header>
+            <header>
+              <div>
+                <span>{copy.t(form.id ? 'CẬP NHẬT' : 'TẠO MỚI')}</span>
+                <h3 id="enterprise-form-title">{copy.t(workspaceTypeMeta(form.type).label)}</h3>
+              </div>
+              <button type="button" onClick={() => setForm(null)} disabled={saving} aria-label={copy.t('Đóng')}>
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </header>
             <div className="enterprise-form-scroll">
-              {!form.id && <FormField label={copy.t('Loại nghiệp vụ')}><select value={form.type} onChange={event => setForm(emptyForm(event.target.value, userId))}>{typeOptions.filter(type => typeCanCreate(type.value, isAdmin)).map(type => <option value={type.value} key={type.value}>{copy.t(type.label)}</option>)}</select></FormField>}
-              <FormField label={copy.t('Tiêu đề')} wide><input name="workspace-title" value={form.title} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} maxLength="500" required /></FormField>
-              <FormField label={copy.t('Nội dung')} wide><textarea name="workspace-description" value={form.description} onChange={event => setForm(previous => ({ ...previous, description: event.target.value }))} rows="5" maxLength="100000" /></FormField>
-              <FormField label={copy.t('Mức ưu tiên')}><select value={form.priority} onChange={event => setForm(previous => ({ ...previous, priority: event.target.value }))}><option value="LOW">{copy.t('Thấp')}</option><option value="NORMAL">{copy.t('Bình thường')}</option><option value="HIGH">{copy.t('Cao')}</option><option value="URGENT">{copy.t('Khẩn cấp')}</option></select></FormField>
-              <FormField label={copy.t('Phạm vi')}><select value={form.visibility} onChange={event => setForm(previous => ({ ...previous, visibility: event.target.value }))}><option value="COMPANY">{copy.t('Toàn công ty')}</option><option value="PARTICIPANTS">{copy.t('Người liên quan')}</option></select></FormField>
-              {!form.id && <FormField label={copy.t('Trạng thái ban đầu')}><select value={form.status} onChange={event => setForm(previous => ({ ...previous, status: event.target.value }))}>{ENTERPRISE_STATUSES[form.type].map(status => <option key={status} value={status}>{copy.t(workspaceStatusLabel(status))}</option>)}</select></FormField>}
-              <FormField label={copy.t('Người phụ trách')}><select value={form.ownerId} onChange={event => setForm(previous => ({ ...previous, ownerId: event.target.value }))}>{accounts.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}</select></FormField>
-              {['TASK', 'APPROVAL', 'TICKET'].includes(form.type) && <FormField label={copy.t('Hạn xử lý')}><input type="datetime-local" value={form.dueAt} onChange={event => setForm(previous => ({ ...previous, dueAt: event.target.value }))} /></FormField>}
-              {form.type === 'EVENT' && <>
-                <FormField label={copy.t('Bắt đầu')}><input type="datetime-local" value={form.startsAt} onChange={event => setForm(previous => ({ ...previous, startsAt: event.target.value }))} required /></FormField>
-                <FormField label={copy.t('Kết thúc')}><input type="datetime-local" value={form.endsAt} onChange={event => setForm(previous => ({ ...previous, endsAt: event.target.value }))} /></FormField>
-                <FormField label={copy.t('Địa điểm')}><input value={form.location} onChange={event => setForm(previous => ({ ...previous, location: event.target.value }))} maxLength="255" /></FormField>
-                <FormField label={copy.t('Link họp')}><input type="url" value={form.meetingUrl} onChange={event => setForm(previous => ({ ...previous, meetingUrl: event.target.value }))} /></FormField>
-                <label className="enterprise-inline-toggle"><input type="checkbox" checked={form.allDay} onChange={event => setForm(previous => ({ ...previous, allDay: event.target.checked }))} /><span>{copy.t('Cả ngày')}</span></label>
-              </>}
+              {!form.id && (
+                <FormField label={copy.t('Loại nghiệp vụ')}>
+                  <select value={form.type} onChange={event => setForm(emptyForm(event.target.value, userId))}>
+                    {typeOptions.filter(type => typeCanCreate(type.value, isAdmin)).map(type => (
+                      <option value={type.value} key={type.value}>{copy.t(type.label)}</option>
+                    ))}
+                  </select>
+                </FormField>
+              )}
+              <FormField label={copy.t('Tiêu đề')} wide>
+                <input name="workspace-title" value={form.title} onChange={event => setForm(previous => ({ ...previous, title: event.target.value }))} maxLength="500" required />
+              </FormField>
+              <FormField label={copy.t('Nội dung')} wide>
+                <textarea name="workspace-description" value={form.description} onChange={event => setForm(previous => ({ ...previous, description: event.target.value }))} rows="5" maxLength="100000" />
+              </FormField>
+              <FormField label={copy.t('Mức ưu tiên')}>
+                <select value={form.priority} onChange={event => setForm(previous => ({ ...previous, priority: event.target.value }))}>
+                  <option value="LOW">{copy.t('Thấp')}</option>
+                  <option value="NORMAL">{copy.t('Bình thường')}</option>
+                  <option value="HIGH">{copy.t('Cao')}</option>
+                  <option value="URGENT">{copy.t('Khẩn cấp')}</option>
+                </select>
+              </FormField>
+              <FormField label={copy.t('Phạm vi')}>
+                <select value={form.visibility} onChange={event => setForm(previous => ({ ...previous, visibility: event.target.value }))}>
+                  <option value="COMPANY">{copy.t('Toàn công ty')}</option>
+                  <option value="PARTICIPANTS">{copy.t('Người liên quan')}</option>
+                </select>
+              </FormField>
+              {!form.id && (
+                <FormField label={copy.t('Trạng thái ban đầu')}>
+                  <select value={form.status} onChange={event => setForm(previous => ({ ...previous, status: event.target.value }))}>
+                    {ENTERPRISE_STATUSES[form.type].map(status => (
+                      <option key={status} value={status}>{copy.t(workspaceStatusLabel(status))}</option>
+                    ))}
+                  </select>
+                </FormField>
+              )}
+              <FormField label={copy.t('Người phụ trách')}>
+                <select value={form.ownerId} onChange={event => setForm(previous => ({ ...previous, ownerId: event.target.value }))}>
+                  {accounts.map(account => <option value={account.id} key={account.id}>{account.name}</option>)}
+                </select>
+              </FormField>
+              {['TASK', 'APPROVAL', 'TICKET'].includes(form.type) && (
+                <FormField label={copy.t('Hạn xử lý')}>
+                  <input type="datetime-local" value={form.dueAt} onChange={event => setForm(previous => ({ ...previous, dueAt: event.target.value }))} />
+                </FormField>
+              )}
+              {form.type === 'EVENT' && (
+                <>
+                  <FormField label={copy.t('Bắt đầu')}><input type="datetime-local" value={form.startsAt} onChange={event => setForm(previous => ({ ...previous, startsAt: event.target.value }))} required /></FormField>
+                  <FormField label={copy.t('Kết thúc')}><input type="datetime-local" value={form.endsAt} onChange={event => setForm(previous => ({ ...previous, endsAt: event.target.value }))} /></FormField>
+                  <FormField label={copy.t('Địa điểm')}><input value={form.location} onChange={event => setForm(previous => ({ ...previous, location: event.target.value }))} maxLength="255" /></FormField>
+                  <FormField label={copy.t('Link họp')}><input type="url" value={form.meetingUrl} onChange={event => setForm(previous => ({ ...previous, meetingUrl: event.target.value }))} /></FormField>
+                  <label className="enterprise-inline-toggle"><input type="checkbox" checked={form.allDay} onChange={event => setForm(previous => ({ ...previous, allDay: event.target.checked }))} /><span>{copy.t('Cả ngày')}</span></label>
+                </>
+              )}
               {['TICKET', 'WIKI'].includes(form.type) && <FormField label={copy.t('Danh mục')}><input value={form.category} onChange={event => setForm(previous => ({ ...previous, category: event.target.value }))} maxLength="255" /></FormField>}
               {form.type === 'WIKI' && <FormField label={copy.t('Thẻ, cách nhau bằng dấu phẩy')}><input value={form.tags} onChange={event => setForm(previous => ({ ...previous, tags: event.target.value }))} /></FormField>}
               {form.type === 'APPROVAL' && <FormField label={copy.t('Loại đề nghị')}><input value={form.requestKind} onChange={event => setForm(previous => ({ ...previous, requestKind: event.target.value }))} maxLength="255" /></FormField>}
-              {form.type === 'INTEGRATION' && <>
-                <FormField label={copy.t('Nhà cung cấp')}><input value={form.provider} onChange={event => setForm(previous => ({ ...previous, provider: event.target.value }))} maxLength="255" required /></FormField>
-                <FormField label={copy.t('Endpoint công khai')}><input type="url" value={form.endpoint} onChange={event => setForm(previous => ({ ...previous, endpoint: event.target.value }))} placeholder="https://..." /></FormField>
-                <FormField label={copy.t('Chiều đồng bộ')}><select value={form.syncDirection} onChange={event => setForm(previous => ({ ...previous, syncDirection: event.target.value }))}><option value="BIDIRECTIONAL">{copy.t('Hai chiều')}</option><option value="INBOUND">{copy.t('Vào Workspace')}</option><option value="OUTBOUND">{copy.t('Ra hệ thống')}</option></select></FormField>
-                <p className="enterprise-security-note wide"><i className="fa-solid fa-shield-halved"></i>{copy.t('Workspace không lưu API key, token hoặc mật khẩu tích hợp.')}</p>
-              </>}
-              {form.type === 'ANNOUNCEMENT' && <div className="enterprise-toggle-row wide">
-                <label><input type="checkbox" checked={form.requiresAck} onChange={event => setForm(previous => ({ ...previous, requiresAck: event.target.checked }))} /><span>{copy.t('Bắt buộc nhân viên xác nhận đã đọc')}</span></label>
-                <label><input type="checkbox" checked={form.pinned} onChange={event => setForm(previous => ({ ...previous, pinned: event.target.checked }))} /><span>{copy.t('Ghim thông báo')}</span></label>
-              </div>}
+              {form.type === 'INTEGRATION' && (
+                <>
+                  <FormField label={copy.t('Nhà cung cấp')}><input value={form.provider} onChange={event => setForm(previous => ({ ...previous, provider: event.target.value }))} maxLength="255" required /></FormField>
+                  <FormField label={copy.t('Endpoint công khai')}><input type="url" value={form.endpoint} onChange={event => setForm(previous => ({ ...previous, endpoint: event.target.value }))} placeholder="https://..." /></FormField>
+                  <FormField label={copy.t('Chiều đồng bộ')}><select value={form.syncDirection} onChange={event => setForm(previous => ({ ...previous, syncDirection: event.target.value }))}><option value="BIDIRECTIONAL">{copy.t('Hai chiều')}</option><option value="INBOUND">{copy.t('Vào Workspace')}</option><option value="OUTBOUND">{copy.t('Ra hệ thống')}</option></select></FormField>
+                  <p className="enterprise-security-note wide"><i className="fa-solid fa-shield-halved"></i>{copy.t('Workspace không lưu API key, token hoặc mật khẩu tích hợp.')}</p>
+                </>
+              )}
+              {form.type === 'ANNOUNCEMENT' && (
+                <div className="enterprise-toggle-row wide">
+                  <label><input type="checkbox" checked={form.requiresAck} onChange={event => setForm(previous => ({ ...previous, requiresAck: event.target.checked }))} /><span>{copy.t('Bắt buộc nhân viên xác nhận đã đọc')}</span></label>
+                  <label><input type="checkbox" checked={form.pinned} onChange={event => setForm(previous => ({ ...previous, pinned: event.target.checked }))} /><span>{copy.t('Ghim thông báo')}</span></label>
+                </div>
+              )}
               <fieldset className="enterprise-member-picker wide">
                 <legend>{copy.t(form.type === 'APPROVAL' ? 'Người phê duyệt' : form.type === 'EVENT' ? 'Người tham dự' : 'Người liên quan')}</legend>
-                <div>{accounts.filter(account => account.id !== userId || form.type === 'EVENT').map(account => {
-                  const selected = form.participantIds.includes(account.id);
-                   return <label key={account.id} className={selected ? 'selected' : ''}><input type="checkbox" checked={selected} onChange={() => setForm(previous => {
-                     const participantIds = selected
-                       ? previous.participantIds.filter(id => id !== account.id)
-                       : [...previous.participantIds, account.id];
-                     const participantRoles = { ...(previous.participantRoles || {}) };
-                     if (selected) delete participantRoles[account.id];
-                     else participantRoles[account.id] = participantRoles[account.id] || PARTICIPANT_ROLE[form.type];
-                     return { ...previous, participantIds, participantRoles };
-                   })} /><Avatar account={account} small /><span><strong>{account.name}</strong><small>{account.department || account.title || account.username}</small></span><i className="fa-solid fa-check"></i></label>;
-                })}</div>
+                <div>
+                  {accounts.filter(account => account.id !== userId || form.type === 'EVENT').map(account => {
+                    const selected = form.participantIds.includes(account.id);
+                    return (
+                      <label key={account.id} className={selected ? 'selected' : ''}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => setForm(previous => {
+                            const participantIds = selected
+                              ? previous.participantIds.filter(id => id !== account.id)
+                              : [...previous.participantIds, account.id];
+                            const participantRoles = { ...(previous.participantRoles || {}) };
+                            if (selected) delete participantRoles[account.id];
+                            else participantRoles[account.id] = participantRoles[account.id] || PARTICIPANT_ROLE[form.type];
+                            return { ...previous, participantIds, participantRoles };
+                          })}
+                        />
+                        <Avatar account={account} small />
+                        <span><strong>{account.name}</strong><small>{account.department || account.title || account.username}</small></span>
+                        <i className="fa-solid fa-check"></i>
+                      </label>
+                    );
+                  })}
+                </div>
               </fieldset>
             </div>
-            <footer><button type="button" onClick={() => setForm(null)} disabled={saving}>{copy.t('Hủy')}</button><button type="submit" className="primary" disabled={saving || !form.title.trim()}><i className={'fa-solid ' + (saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk')}></i>{saving ? copy.t('Đang lưu...') : form.id ? copy.t('Lưu thay đổi') : copy.t('Tạo mục mới')}</button></footer>
+            <footer>
+              <button type="button" onClick={() => setForm(null)} disabled={saving}>{copy.t('Hủy')}</button>
+              <button type="submit" className="primary" disabled={saving || !form.title.trim()}>
+                <i className={'fa-solid ' + (saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk')}></i>
+                {saving ? copy.t('Đang lưu...') : form.id ? copy.t('Lưu thay đổi') : copy.t('Tạo mục mới')}
+              </button>
+            </footer>
           </form>
         </div>
       )}

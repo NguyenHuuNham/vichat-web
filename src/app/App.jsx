@@ -7986,6 +7986,30 @@ function App() {
   const openWorkspacePanel = panel => navigateWorkspace(panel);
   const closeWorkspacePanel = options => navigateWorkspace(null, options);
 
+  const handleOpenWorkspaceConversation = async (conversationId, meta = {}) => {
+    closeWorkspacePanel();
+    if (conversationId && (conversationsRef.current[conversationId] || conversations[conversationId])) {
+      await handleConversationSelect(conversationId);
+      return;
+    }
+    const targetAccountIds = (meta?.participantIds || []).filter(
+      id => !identitiesOverlap({ id }, currentUser)
+    );
+    if (targetAccountIds.length === 1) {
+      const directId = targetAccountIds[0];
+      const existingDirect = Object.values(conversationsRef.current || {}).find(
+        c => !c.isGroup && String(c.peerId || c.recipientId || c.id) === String(directId)
+      );
+      if (existingDirect?.id) {
+        await handleConversationSelect(existingDirect.id);
+        return;
+      }
+    }
+    if (conversationId) {
+      await handleConversationSelect(conversationId);
+    }
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleWorkspacePopState = () => {
@@ -17965,6 +17989,7 @@ function App() {
                   taskSeed={enterpriseTaskSeed}
                   onTaskSeedConsumed={() => setEnterpriseTaskSeed(null)}
                   onError={setChatError}
+                  onOpenConversation={handleOpenWorkspaceConversation}
                 />
               </Suspense>
             )}

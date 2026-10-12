@@ -6,6 +6,50 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-01 - Tái cấu trúc và nâng cấp toàn diện phân hệ Workspace ViChat (Đồng bộ Web-Mobile, My Daily Agenda, Command Center cho Sếp & Mapping UPGO):
+
+- Thoi gian: 2026-10-12 11:30 (Asia/Saigon)
+- Loai: Tinh nang | Tai cau truc | UI/UX Redesign | Mobile-Web Sync | Enterprise Data Mapping
+- Trang thai: Hoan tat 100%, 468/468 tests frontend PASS, 12/12 tests backend PASS, 7/7 tests mobile PASS, build production PASS.
+- Muc tieu: Đồng bộ hóa trải nghiệm Web ↔ Mobile, xây dựng Task-Centric Board thay thế bảng cũ, góc nhìn "Hôm nay làm gì & Móc nối với ai" cho nhân viên, "Toàn cảnh công ty & Tiến độ" cho Sếp, mapping 1:1 trường dữ liệu UPGO Workspace (`creator`, `assignee`, `members_incharge`, `report_to`, `checklist`, `task_hash`).
+- Pham vi:
+  + Backend Chatmgt (`chatservice-main`): `enterprise_workspace_service.py`, `test_enterprise_workspace.py`
+  + Web UI & Service (`src/features/workspace/`): `EnterpriseWorkspace.jsx`, `enterpriseWorkspace.css`, `enterpriseWorkspaceService.js`, `enterpriseWorkspaceService.test.js`, `TaskCard.jsx`, `CompanyStaffMatrixView.jsx`, `TaskCreateModal.jsx`, `src/app/App.jsx`
+  + Mobile Module (`mobile/src/modules/workspace/`): `types/index.ts`, `services/taskService.ts`, `components/TaskItemCard.tsx`, `__tests__/taskService.test.ts`
+  + Tài liệu kiến trúc: `docs/chat-backend-architecture.md`, `docs/CHANGELOG.md`
+- Noi dung:
+  1. Giai doan 1 (Data & Service):
+     - Bổ sung vai trò `COLLABORATOR` (Người cùng phối hợp) và `APPROVER` (Người duyệt) vào danh mục vai trò `PARTICIPANT_ROLES["TASK"]`.
+     - Cho phép cả `COLLABORATOR` thực hiện thao tác tiến độ `START`, `COMPLETE`.
+     - Mở rộng `PROPERTY_FIELDS` và `sanitize_properties` hỗ trợ `subtasks`, `group_name`, `task_hash`, `report_to_name`.
+     - Xây dựng các helper `normalizeTaskExtended`, `getDueStatus`, `filterWorkspaceTasks`, `groupWorkspaceTasks` trong `enterpriseWorkspaceService.js`.
+  2. Giai doan 2 (Giao dien Nhan vien - My Daily Agenda):
+     - Chuyển `EnterpriseWorkspace.jsx` từ bảng hành chính sang Task-Centric Board.
+     - Sidebar subnav trái tương tự mobile: ⭐ *Hôm nay làm gì*, 🎯 *Được giao*, 👥 *Cùng làm việc*, 👤 *Tôi đã giao*, 📋 *Tất cả*, ✅ *Đã hoàn thành*.
+     - Header filter toolbar: Trạng thái (*Tất cả*, *Đang làm*, *Đã xong*), Gom nhóm (*Theo Hạn chót*, *Theo Dự án/Nhóm*, *Mức ưu tiên*).
+     - Component `TaskCard.jsx` với checkbox hoàn thành nhanh, badge Người giao (👤 Sếp/Creator), Người làm chính (🎯 Assignee), Nhóm cùng làm (👥 Collaborators), Người duyệt (📋 Approver), Hạn chót đỏ (Quá hạn) / cam (Hôm nay), và nút 1-Click Chat (`[💬 Thảo luận]`).
+  3. Giai doan 3 (Giao dien Sep - Company Command Center):
+     - Component `CompanyStaffMatrixView.jsx` tích hợp toggle góc nhìn cho Quản lý/Admin: **[Việc của tôi]** ⟷ **[Toàn cảnh công ty]**.
+     - Gom nhóm theo Phòng ban/Bộ phận; Thẻ nhân sự hiển thị số việc đang làm, hôm nay, đã xong, quá hạn, % tiến độ.
+     - Bộ lọc cảnh báo nhanh: 🚨 *Có việc quá hạn*, ⚠️ *Chưa có việc hôm nay*, tìm kiếm nhân sự và lọc phòng ban.
+  4. Giai doan 4 (Modal Giao viec nang cao & Dong bo Mobile):
+     - Component `TaskCreateModal.jsx` trên Web: Giao việc với Assignee, Multi-select Collaborators, Approver, Due date shortcut, Subtasks checklist, và tùy chọn tự động tạo nhóm chat thảo luận.
+     - Kết nối `onOpenConversation` giữa `EnterpriseWorkspace` và `src/app/App.jsx` để 1-click mở/chuyển ngay đến cuộc trò chuyện công việc.
+     - Đồng bộ Mobile: Cập nhật `types/index.ts`, `services/taskService.ts`, và `components/TaskItemCard.tsx` hiển thị Người giao và Nhóm người phối hợp.
+- Quyet dinh ky thuat:
+  - Giữ vững service boundary: Workspace không import hoặc tương tác trực tiếp socket Tinode; trao đổi chat được ủy quyền qua callback `onOpenConversation` của `App.jsx`.
+  - Giữ vững toàn bộ hợp đồng CSS `.enterprise-shell-panel`, `.enterprise-workspace` theo kiểm thử `workspaceLayout.test.js`.
+  - Hỗ trợ toàn diện chế độ nền tối (Dark mode) qua các selector `html[data-theme="dark"]`.
+- Database/API/cau hinh: Tương thích ngược 100% với schema PostgreSQL hiện tại (`enterprise_item`, `enterprise_item_participant`), không cần sửa đổi migration.
+- Kiem thu:
+  - Backend unittest: 12/12 tests PASS (`python -m unittest chatservice-main/tests/test_enterprise_workspace.py`).
+  - Frontend unittests: 468/468 tests PASS (`npm run test:frontend`).
+  - Mobile vitest: 7/7 tests PASS (`npm run test src/modules/workspace/__tests__/taskService.test.ts` và `taskStore.test.ts`).
+  - Vite production build: 0 error/warning (`npm run build`).
+- Rui ro con lai: Khong co da biet.
+- Viec tiep theo: San sang dong goi va trien khai production khi nguoi dung yeu cau.
+- Commit/PR: Chua tao.
+
 ## 2026-10-11-11 - Chuẩn hóa giao diện tiêu đề hội thoại Zalo CRM (Đề mục 2 hàng, pill badges và bullet separators):
 
 - Thoi gian: 2026-10-11 23:10 (Asia/Saigon)

@@ -122,10 +122,19 @@ export function TaskItemCard({ task, onPress }: TaskItemCardProps) {
         </View>
       </View>
 
-      {/* Assignee Avatar */}
-      {task.assigneeName ? (
-        <Avatar name={task.assigneeName} size={24} />
-      ) : null}
+      {/* Assignee & Collaborators */}
+      <View style={styles.peopleRow}>
+        {task.collaborators && task.collaborators.length > 0 && (
+          <View style={[styles.collabsBadge, { backgroundColor: palette.canvas }]}>
+            <Text style={[styles.collabsText, { color: palette.inkSoft }]}>
+              👥+{task.collaborators.length}
+            </Text>
+          </View>
+        )}
+        {task.assigneeName ? (
+          <Avatar name={task.assigneeName} size={24} />
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -180,5 +189,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+  },
+  peopleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  collabsBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  collabsText: {
+    ...typography.caption,
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

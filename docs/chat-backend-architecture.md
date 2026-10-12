@@ -1472,7 +1472,12 @@ remains exclusively in Tinode.
 Every Workspace query includes the JWT tenant and filters participants by that
 same tenant. `COMPANY` items are visible to active employees in the tenant;
 `PARTICIPANTS` items are visible only to the creator, owner or listed
-participants. Announcements and integration registry mutations require a
+participants. TASK items support explicit roles `ASSIGNEE` (primary assignee),
+`COLLABORATOR` (co-workers/collaborators), `APPROVER` (reviewer / report-to)
+and `WATCHER`. Both assignees and collaborators may advance task states (`START`,
+`COMPLETE`). Task properties support `checklist`, `subtasks`, `group_name`, `task_hash`,
+`report_to_name` and `source_conversation_name` for UPGO Workspace 1:1 mapping.
+Announcements and integration registry mutations require a
 tenant administrator. Other types use creator/owner/participant roles for
 editing and state transitions. Every create, update, archive, action and
 comment writes an `enterprise_activity` row and a security audit event.
