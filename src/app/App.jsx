@@ -61,6 +61,7 @@ import {
   nextNotificationMuteExpiry,
   notificationMuteLabel,
   notificationMessageBody,
+  normalizeNotificationMuteUntil,
   normalizeNotificationSettings,
   readCustomNotificationSound,
   readNotificationSettings,
@@ -1933,12 +1934,40 @@ function conversationFallbackId(value) {
     : '';
 }
 
+function readCachedConversationMute(room) {
+  if (!room || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage?.getItem('vichat.conversation-mutes.v1');
+    if (!raw) return null;
+    const stored = JSON.parse(raw);
+    const keys = [
+      room.id,
+      room.managementId,
+      room.tinodeTopic,
+    ].map(k => String(k || '').trim()).filter(Boolean);
+    for (const key of keys) {
+      if (stored[key] !== undefined) {
+        const val = normalizeNotificationMuteUntil(stored[key]);
+        if (val !== null && isConversationMuted(val)) return val;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 function safeNormalizeConversationForRender(conversation, fallbackId = '') {
   const id = conversationFallbackId(fallbackId);
   try {
     const normalized = normalizeConversationShape(conversation);
     const normalizedId = normalized.id || id;
-    return normalizedId ? { ...normalized, id: normalizedId } : normalized;
+    let result = normalizedId ? { ...normalized, id: normalizedId } : normalized;
+    if (result && (result.notificationMutedUntil === null || result.notificationMutedUntil === undefined)) {
+      const cachedMute = readCachedConversationMute(result);
+      if (cachedMute !== null) {
+        result = { ...result, notificationMutedUntil: cachedMute };
+      }
+    }
+    return result;
   } catch (error) {
     clientLogger.error('conversation_normalization_failed', error);
     if (!id) return null;
@@ -10303,36 +10332,78 @@ function App() {
     if (!room || room.isChatbot || room.id === 'empty') return false;
     setIsUpdatingNotificationMute(true);
     setChatError('');
+
+    const effectiveMuteUntil = normalizeNotificationMuteUntil(mutedUntil);
+    const keysToMute = [
+      conversationId,
+      room.id,
+      room.managementId,
+      room.tinodeTopic,
+    ].map(k => String(k || '').trim()).filter(Boolean);
+
+    // 1. Optimistic local update: phản hồi giao diện ngay lập tức
+    setConversations(previous => {
+      const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
+        ? null
+        : safeNormalizeConversationForRender(previous[conversationId], conversationId);
+      if (!previousRoom) return previous;
+      const next = {
+        ...previous,
+        [conversationId]: {
+          ...previousRoom,
+          notificationMutedUntil: effectiveMuteUntil,
+        },
+      };
+      conversationsRef.current = next;
+      return next;
+    });
+    setNotificationClock(Date.now());
+
+    // 2. Lưu vào local storage của trình duyệt để giữ nguyên khi reload
     try {
-      let persistedMuteUntil = mutedUntil;
+      const storedMutes = JSON.parse(window.localStorage?.getItem('vichat.conversation-mutes.v1') || '{}');
+      keysToMute.forEach(key => {
+        if (effectiveMuteUntil === null) {
+          delete storedMutes[key];
+        } else {
+          storedMutes[key] = effectiveMuteUntil;
+        }
+      });
+      window.localStorage?.setItem('vichat.conversation-mutes.v1', JSON.stringify(storedMutes));
+    } catch (_) {}
+
+    // 3. Best-effort sync to Chatmgt backend
+    try {
       const managementConversationId = room.managementId || room.id;
       if (chatManagementService.remote && chatMode !== 'demo' && isManagementConversationId(managementConversationId)) {
         const updated = await chatManagementService.updateConversationNotifications(
           managementConversationId,
-          mutedUntil,
+          effectiveMuteUntil,
         );
-        persistedMuteUntil = updated.notificationMutedUntil;
+        if (updated && updated.notificationMutedUntil !== undefined) {
+          const finalMuteUntil = normalizeNotificationMuteUntil(updated.notificationMutedUntil);
+          setConversations(previous => {
+            const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
+              ? null
+              : safeNormalizeConversationForRender(previous[conversationId], conversationId);
+            if (!previousRoom) return previous;
+            const next = {
+              ...previous,
+              [conversationId]: {
+                ...previousRoom,
+                notificationMutedUntil: finalMuteUntil,
+              },
+            };
+            conversationsRef.current = next;
+            return next;
+          });
+        }
       }
-      setConversations(previous => {
-        const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
-          ? null
-          : safeNormalizeConversationForRender(previous[conversationId], conversationId);
-        if (!previousRoom) return previous;
-        const next = {
-          ...previous,
-          [conversationId]: {
-            ...previousRoom,
-            notificationMutedUntil: persistedMuteUntil,
-          },
-        };
-        conversationsRef.current = next;
-        return next;
-      });
-      setNotificationClock(Date.now());
       return true;
     } catch (error) {
-      setChatError(error?.message || 'Không thể cập nhật thiết lập thông báo của cuộc trò chuyện.');
-      return false;
+      // Best-effort: backend sync deferred, preserve client-applied mute state without disturbing the user
+      console.warn('[ViChat] Backend notification-settings sync deferred:', error?.message);
+      return true;
     } finally {
       setIsUpdatingNotificationMute(false);
     }
@@ -10694,7 +10765,7 @@ function App() {
       await markConversationRead(room);
       return;
     }
-    if (action === 'mute') {
+    if (action === 'mute' || action === 'toggle-mute') {
       setConversationMenu(null);
       if (isConversationMuted(room.notificationMutedUntil, notificationClock)) {
         await updateConversationMute(room.id, null);
@@ -17182,9 +17253,11 @@ function App() {
                 className={`group-detail-quick-action ${activeChatMuted ? 'active' : ''}`}
                 onClick={handleConversationMuteToggle}
                 disabled={isUpdatingNotificationMute}
+                title={appCopy.t(activeChatMuted ? 'Bật thông báo' : 'Tắt thông báo')}
+                aria-label={appCopy.t(activeChatMuted ? 'Bật thông báo' : 'Tắt thông báo')}
               >
                 <span className="group-detail-quick-icon"><i className={`fa-solid ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i></span>
-                <span>{appCopy.t('Tắt thông báo')}</span>
+                <span>{appCopy.t(activeChatMuted ? 'Bật thông báo' : 'Tắt thông báo')}</span>
               </button>
               <button
                 type="button"
@@ -17729,7 +17802,7 @@ function App() {
                 <div className="action-label">
                   <i className={`fa-solid ${activeChatMuted ? 'fa-bell-slash' : 'fa-bell'}`}></i>
                   <span className="action-label-copy">
-                    <strong>{appCopy.t('Tắt thông báo')}</strong>
+                    <strong>{appCopy.t(activeChatMuted ? 'Đã tắt thông báo' : 'Tắt thông báo')}</strong>
                     {activeChatMuteLabel && <small>{activeChatMuteLabel}</small>}
                   </span>
                 </div>

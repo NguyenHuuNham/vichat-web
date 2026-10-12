@@ -1120,3 +1120,15 @@ test('zalo customer profile sync, avatar no-referrer, and quick messages modal',
   assert.match(stylesSource, /\.quick-messages-modal-card/);
   assert.match(stylesSource, /\.zalo-customer-detail-card/);
 });
+
+test('conversation mute flow supports context menu toggle and resilient optimistic client persistence', () => {
+  // Context menu room action handles toggle-mute
+  assert.match(appSource, /action === 'mute' \|\| action === 'toggle-mute'/);
+  // Group quick action dynamically reflects active muted state
+  assert.match(appSource, /appCopy\.t\(activeChatMuted \? 'Bật thông báo' : 'Tắt thông báo'\)/);
+  // Local mute cache helper preserves muted state across reloads
+  assert.match(appSource, /function readCachedConversationMute/);
+  assert.match(appSource, /window\.localStorage\?\.getItem\('vichat\.conversation-mutes\.v1'\)/);
+  // Optimistic mute updates UI first without throwing blocking permission errors to user
+  assert.match(appSource, /console\.warn\('\[ViChat\] Backend notification-settings sync deferred:', error\?\.message\)/);
+});

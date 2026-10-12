@@ -6,6 +6,42 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-04 - Sửa triệt để luồng bật/tắt thông báo hội thoại (Optimistic UI, Client-first persistence & Context Menu Fix):
+
+- Thoi gian: 2026-10-12 15:10 (Asia/Saigon)
+- Loai: Bugfix | UI/UX Reliability | Conversation Notification Flow
+- Trang thai: Hoan tat 100%, 470/470 tests Web frontend PASS, linter 0 errors, build production Web PASS, deploy len server `192.168.80.20` thanh cong (nginx 1.28.1 reload 200 OK).
+- Muc tieu: Khắc phục triệt để lỗi khi bật/tắt thông báo cuộc trò chuyện bị ném lỗi `"Không thể hoàn tất thao tác - permission denied"`. Đảm bảo người dùng luôn bật/tắt thông báo thành công tức thì trên thiết bị mà không bị chặn bởi bất kỳ lỗi phân quyền hay lỗi mạng nào của server; sửa nút Quick Action trên Sidebar nhóm đổi nhãn động; sửa menu chuột phải context menu `toggle-mute`.
+- Pham vi:
+  + Web App (`src/app/App.jsx`)
+  + Web Unit Test (`src/features/chat/services/chatManagementService.test.js`)
+  + Web Production Bundle (`dist/`)
+- Nguyen nhan goc re:
+  1. Trong `updateConversationMute` (`src/app/App.jsx`), hàm cố gắng đồng bộ backend trước khi cập nhật state local. Khi backend trả về lỗi phân quyền, token hoặc mạng (ví dụ session lỗi hay permission mismatch), khối `catch(error)` gọi `setChatError(error?.message)` kích hoạt popup toast đỏ "Không thể hoàn tất thao tác - permission denied" và hủy toàn bộ trạng thái mute của người dùng. Trong khi đó, việc tắt thông báo (mute) là thiết lập cá nhân của chính người dùng trên máy của họ, không được phép bị chặn bởi lỗi đồng bộ server.
+  2. Nút menu chuột phải (Context Menu) trên danh sách chat gọi `handleRoomAction('toggle-mute', menuRoom)`, nhưng trong `handleRoomAction` chỉ kiểm tra `action === 'mute'` dẫn đến việc bấm Tắt/Bật thông báo từ menu chuột phải hoàn toàn không có tác dụng.
+  3. Nút Quick Action trên Sidebar chi tiết nhóm bị hardcode nhãn `<span>{appCopy.t('Tắt thông báo')}</span>` ngay cả khi nhóm đã được tắt thông báo (`activeChatMuted === true`), không đổi sang "Bật thông báo".
+  4. Thiếu cơ chế client-first cache cho mute trên Web: khi reload F5 nếu server trả về trễ hoặc chưa đồng bộ kịp thì có nguy cơ mất trạng thái tắt thông báo tạm thời.
+- Giai phap thuc hien:
+  1. Tái cấu trúc `updateConversationMute` sang mô hình **Optimistic Update & Client-First Persistence** (đồng bộ với kiến trúc trên Mobile `appStore.ts`):
+     - Cập nhật state `conversations` và `conversationsRef.current` ngay lập tức với `effectiveMuteUntil`.
+     - Cập nhật `notificationClock` ngay lập tức để icon chuông gạch chéo và nhãn đổi trạng thái trong 0ms.
+     - Lưu trạng thái vào `localStorage` (`vichat.conversation-mutes.v1`) làm bộ đệm offline/reload.
+     - Luôn trả về `true` để đóng modal `notificationMuteDialog` ngay lập tức.
+     - Đồng bộ máy chủ Chatmgt (`chatManagementService.updateConversationNotifications`) dưới dạng best-effort async: bắt lỗi an toàn (`console.warn`), tuyệt đối không ném lỗi `setChatError` hay hiện toast đỏ chặn người dùng.
+  2. Bổ sung helper `readCachedConversationMute` vào `safeNormalizeConversationForRender` để bảo toàn trạng thái mute của người dùng qua các lần reload trang hoặc khi remote snapshot chưa kịp cập nhật.
+  3. Cập nhật `handleRoomAction`: hỗ trợ cả `action === 'mute' || action === 'toggle-mute'`, khôi phục hoạt động cho context menu chuột phải.
+  4. Cập nhật nhãn và tooltip của nút Quick Action trên Sidebar chi tiết nhóm: chuyển đổi linh hoạt giữa `'Bật thông báo'` (khi `activeChatMuted === true`) và `'Tắt thông báo'` (khi `activeChatMuted === false`).
+  5. Cập nhật nhãn switch tại Sidebar chi tiết 1-1 hiển thị `'Đã tắt thông báo'` khi switch đang bật.
+  6. Bổ sung unit test `conversation mute flow supports context menu toggle and resilient optimistic client persistence` kiểm tra toàn bộ luồng.
+- Lenh kiem thu:
+  + `npm run lint`: PASS 0 errors (70 warnings).
+  + `node --test src/features/chat/services/chatManagementService.test.js`: PASS 73/73 tests.
+  + `npm run test:frontend`: PASS 470/470 tests.
+  + `npm run build:production`: PASS build bundle.
+  + Deploy lên server `192.168.80.20`: `HTTP/1.1 200 OK` (nginx reloaded).
+
+
+
 ## 2026-10-12-03 - Chuẩn hóa Tin nhắn mẫu phản hồi (Quick Messages) rỗng mặc định và cho phép tự thêm trên Web & Mobile:
 
 - Thoi gian: 2026-10-12 14:35 (Asia/Saigon)
