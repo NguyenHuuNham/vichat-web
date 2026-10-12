@@ -6,7 +6,26 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
-## 2026-10-12-08 - Tối ưu hóa hiệu năng Web: Giảm độ trễ gõ phím (input latency), giảm tải CPU và tối ưu render danh sách hội thoại:
+## 2026-10-12-09 - Khắc phục lỗi màn hình tạm dừng (ReferenceError draftDebounceTimerRef TDZ):
+
+- Thoi gian: 2026-10-12 17:00 (Asia/Saigon)
+- Loai: Critical Bug Fix | Deployment
+- Trang thai: Hoan tat 100%, build production PASS, deploy len `192.168.80.20` container `songhong-production-chat-1` thanh cong (nginx 200 OK), verify domain public chat.gonplatform.com hoat dong binh thuong.
+- Nguyen nhan su co:
+  + Trong `src/app/App.jsx`, biến `draftDebounceTimerRef` được truy cập trong khối khởi tạo `draftsRef` trước dòng khai báo `const draftDebounceTimerRef = useRef(null);`.
+  + Trình duyệt khi chạy JavaScript gặp lỗi Temporal Dead Zone (TDZ): `ReferenceError: Cannot access 'draftDebounceTimerRef' before initialization`.
+  + Lỗi này kích hoạt `AppErrorBoundary` trong `RootApp.jsx` hiển thị màn hình fallback "Chat dang tam dung - Du lieu cuoc tro chuyen khong hop le".
+- Giai phap:
+  + Chuyển dòng khai báo `const draftDebounceTimerRef = useRef(null);` lên trước `draftsRef` để đảm bảo thứ tự khai báo biến chuẩn xác trong component.
+  + Đóng gói lại production bundle (`index-CJ2S7gv2.js` và `index-rAUF074H.css`).
+  + Deploy lại toàn bộ static files vào container `songhong-production-chat-1` trên server `192.168.80.20`, reload nginx.
+  + Kiem tra truc tiep domain `https://chat.gonplatform.com/`: Trang tai thanh cong, bundle tra ve HTTP 200 OK, giao dien chat hoat dong binh thuong.
+- Lenh kiem thu:
+  + `npm run lint`: PASS (0 errors).
+  + `npm run test:frontend`: PASS 470/470 tests.
+  + `npm run build:production`: PASS.
+  + Deploy va verify curl: PASS (HTTP 200 OK).
+
 
 - Thoi gian: 2026-10-12 16:30 (Asia/Saigon)
 - Loai: Performance Optimization | UX Polish | Stability
