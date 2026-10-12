@@ -6,6 +6,24 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-05 - Đồng bộ màu sắc nút Tạo bình chọn (Poll) trên thanh công cụ chat Web:
+
+- Thoi gian: 2026-10-12 15:20 (Asia/Saigon)
+- Loai: UI/UX Consistency | Styling Refactor
+- Trang thai: Hoan tat 100%, 470/470 tests Web frontend PASS, linter 0 errors, build production Web PASS, deploy len server `192.168.80.20` thanh cong (nginx 1.28.1 reload 200 OK).
+- Muc tieu: Đồng bộ màu sắc của nút "Tạo bình chọn" (`.poll-input-action`) trên thanh công cụ nhập tin nhắn chat về cùng màu xám dịu (`var(--text-muted)`) và hover `var(--text-main)` / `background: var(--bg-gray)` như tất cả các nút khác trên thanh công cụ (Ảnh, Kẹp file, Sticker, Micro, Tin nhắn mẫu), thay vì màu xanh dương `#3a77bd` bị lệch tông so với tổng thể giao diện. Bảo đảm tuyệt đối không ảnh hưởng đến bất kỳ luồng chức năng nào khác.
+- Pham vi:
+  + Web Stylesheet: `src/styles/index.css`
+  + Web Production Bundle: `dist/index.html` va assets
+- Noi dung thay doi:
+  + Trong `src/styles/index.css`: cập nhật `.poll-input-action` từ màu hardcoded `#3a77bd` (hover `#245b9a`, background `#edf5ff`) thành `color: var(--text-muted);` và hover `background-color: var(--bg-gray); color: var(--text-main);`.
+  + Giữ nguyên toàn bộ logic phân quyền tạo bình chọn (`canCreatePollInActiveGroup`), mở modal `openPollComposer`, disabled states khi bot/realtime pending/recording voice.
+- Lenh kiem thu:
+  + `npm run lint`: PASS 0 errors (70 warnings).
+  + `npm run test:frontend`: PASS 470/470 tests.
+  + `npm run build:production`: PASS built in 1.16s.
+  + Deploy lên server `192.168.80.20`: PASS `HTTP/1.1 200 OK` (nginx 1.28.1 reloaded).
+
 ## 2026-10-12-04 - Sửa triệt để luồng bật/tắt thông báo hội thoại (Optimistic UI, Client-first persistence & Context Menu Fix):
 
 - Thoi gian: 2026-10-12 15:10 (Asia/Saigon)

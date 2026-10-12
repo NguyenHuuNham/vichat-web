@@ -2703,8 +2703,8 @@ html[data-theme="dark"] .message-reaction-overflow { color: var(--vichat-blue-da
 .btn-input-action:disabled { cursor: not-allowed; opacity: .45; }
 .voice-input-action.recording { color: #fff; background: #dc2626; box-shadow: 0 0 0 4px rgba(220, 38, 38, .12); }
 .voice-input-action.recording:hover { color: #fff; background: #b91c1c; }
-.poll-input-action { color: #3a77bd; }
-.poll-input-action:hover { color: #245b9a; background: #edf5ff; }
+.poll-input-action { color: var(--text-muted); }
+.poll-input-action:hover { background-color: var(--bg-gray); color: var(--text-main); }
 
 .input-text-container {
     position: relative;
