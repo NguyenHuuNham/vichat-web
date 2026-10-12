@@ -3743,7 +3743,9 @@ function App() {
   const mediaHistoryRequestsRef = useRef(new Map());
   const notificationOpenHandlerRef = useRef(null);
   const draftsRef = useRef(drafts);
-  draftsRef.current = drafts;
+  if (!draftDebounceTimerRef.current) {
+    draftsRef.current = drafts;
+  }
   const draftDebounceTimerRef = useRef(null);
   const chatScrollRafRef = useRef(null);
   const messageMenuRef = useRef(messageMenu);
@@ -7858,6 +7860,7 @@ function App() {
     if (draftDebounceTimerRef.current) {
       window.clearTimeout(draftDebounceTimerRef.current);
       draftDebounceTimerRef.current = null;
+      setDrafts(draftsRef.current);
     }
     setInputText(draftsRef.current[id] || drafts[id] || '');
     setIsMobileChatActive(true);
@@ -9362,7 +9365,12 @@ function App() {
       currentChatIdRef.current = stateConversationId;
       setConversations(optimisticRooms);
       setCurrentChatId(stateConversationId);
-      setInputText(drafts[stateConversationId] || '');
+      if (draftDebounceTimerRef.current) {
+        window.clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+        setDrafts(draftsRef.current);
+      }
+      setInputText(draftsRef.current[stateConversationId] || drafts[stateConversationId] || '');
       setChatError('');
       closeWorkspacePanel();
       setIsMobileChatActive(true);
@@ -9498,7 +9506,7 @@ function App() {
       if (currentChatIdRef.current === stateConversationId) {
         currentChatIdRef.current = stateConversationId;
         setCurrentChatId(stateConversationId);
-        setInputText(drafts[stateConversationId] || '');
+        setInputText(draftsRef.current[stateConversationId] || drafts[stateConversationId] || '');
         setIsMobileChatActive(true);
       }
     } catch (err) {
