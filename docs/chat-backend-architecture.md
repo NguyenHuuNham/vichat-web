@@ -1746,7 +1746,6 @@ ViChat supports multi-tenant omnichannel communication across Zalo OA, Livechat 
   - Phân loại kênh và badge hiển thị: `resolveConversationChannel`, `getChannelBadge`.
   - Toolbar lọc kênh: `ConversationListToolbar.jsx` tích hợp các nút chuyển đổi dạng Pill Chips chống co chữ (`flex-shrink: 0`).
   - Thẻ thông tin khách hàng Zalo (Sidebar CRM phải): Hiển thị Kênh OA, SĐT (kèm nút gọi và copy nhanh), Địa chỉ, Giới tính, Trạng thái quan tâm OA, Nhãn thẻ và Ghi chú đồng bộ từ UpgoBOT.
-  - Hộp thoại tin nhắn mẫu (`QuickMessagesModal.jsx`): Nút Sấm sét ⚡ trên thanh soạn thảo, lưu trữ `localStorage` (`@vichat_quick_messages`) đồng bộ với Mobile.
   - Hỗ trợ tin nhắn Template / Button từ Bot Zalo với các nút bấm tương tác mở liên kết hoặc gửi phản hồi tức thì.
 - **Mobile App**:
   - `mobile/src/types/index.ts`: Mở rộng `ChannelType` (`internal`, `zalo`, `zalo_oa`, `zalo_group`, `livechat`, `facebook`).

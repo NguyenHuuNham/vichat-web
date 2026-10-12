@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { AlarmClock, BarChart3, Camera, Contact, Film, MapPin, Paperclip, Spline, Type, Zap } from 'lucide-react-native';
+import { AlarmClock, BarChart3, Camera, Contact, Film, MapPin, Paperclip, Spline, Type } from 'lucide-react-native';
 import { useI18n } from '../store/languageStore';
 import { useThemePalette } from '../theme/useThemePalette';
 import { ThemeColors } from '../theme/colors';
@@ -21,7 +21,6 @@ interface Props {
   onSelectLocation: () => void;
   onSelectDocument: () => void;
   onSelectReminder: () => void;
-  onSelectQuickMessages: () => void;
   onSelectContact: () => void;
   onSelectGif: () => void;
   onSelectDoodle: () => void;
@@ -76,16 +75,7 @@ export function ChatMorePanel(props: Props) {
         props.onSelectReminder();
       },
     },
-    {
-      id: 'quick_message',
-      title: t('Tin nhắn nhanh'),
-      icon: Zap,
-      bgColor: '#0984E3',
-      iconColor: '#FFFFFF',
-      onPress: () => {
-        props.onSelectQuickMessages();
-      },
-    },
+
     {
       id: 'contact',
       title: t('Danh thiếp'),

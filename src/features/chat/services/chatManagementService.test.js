@@ -1110,14 +1110,12 @@ test('personal cloud stays on owner-scoped Chatmgt routes and uses credential-fr
   assert.match(stylesSource, /\.personal-cloud-file/);
 });
 
-test('zalo customer profile sync, avatar no-referrer, and quick messages modal', () => {
+test('zalo customer profile sync and avatar no-referrer', () => {
   assert.equal(typeof chatManagementService.syncZaloProfile, 'function');
   assert.match(managementServiceSource, /\/api\/v1\/zalo\/conversation\/sync_profile/);
   assert.match(appSource, /referrerPolicy="no-referrer"/);
-  assert.match(appSource, /QuickMessagesModal/);
   assert.match(appSource, /zalo-customer-detail-card/);
   assert.match(appSource, /handleSyncZaloProfile/);
-  assert.match(stylesSource, /\.quick-messages-modal-card/);
   assert.match(stylesSource, /\.zalo-customer-detail-card/);
 });
 

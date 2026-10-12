@@ -6,6 +6,37 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-07 - Loại bỏ hoàn toàn tính năng Tin nhắn nhanh (Quick Messages) trên Web và Mobile:
+
+- Thoi gian: 2026-10-12 15:58 (Asia/Saigon)
+- Loai: Feature Removal | Code Cleanup | UI/UX Simplification
+- Trang thai: Hoan tat 100%, 470/470 tests Web frontend PASS, linter 0 errors, build production Web PASS, deploy len server `192.168.80.20` thanh cong (nginx 1.28.1 reload 200 OK).
+- Muc tieu: Xóa bỏ triệt để tính năng "Tin nhắn nhanh / Tin nhắn mẫu" (Quick Messages) khỏi toàn bộ hệ thống Web và Mobile theo yêu cầu người dùng; bảo đảm dọn sạch code và CSS, không để lại vết tích, tuyệt đối không làm ảnh hưởng đến các luồng tính năng khác như gửi tin nhắn, soạn thảo, gửi ảnh, file, ghi âm thoại, bình chọn poll.
+- Pham vi:
+  + Web App: `src/app/App.jsx` (loại bỏ import QuickMessagesModal, state showQuickMessages, nút bấm icon sấm sét `.quick-message-action`, và khối render modal).
+  + Web Stylesheet: `src/styles/index.css` (xóa toàn bộ các rule CSS `.btn-input-action.quick-message-action.active` và `.quick-messages-*`).
+  + Web Component & Tests: xóa `src/features/chat/components/QuickMessagesModal.jsx`, `src/features/chat/components/QuickMessagesModal.test.js`.
+  + Web Test Suite & Config: `package.json` (bỏ QuickMessagesModal.test.js khỏi script `test:frontend`), `src/features/chat/services/chatManagementService.test.js` (cập nhật bỏ assertion QuickMessagesModal).
+  + Mobile App: `mobile/src/components/ChatMorePanel.tsx` (bỏ item Tin nhắn nhanh và prop `onSelectQuickMessages`), `mobile/src/screens/chat/ChatDetailScreen.tsx` (bỏ QuickMessagesModal import, state, submit handler và JSX), xóa `mobile/src/components/QuickMessagesModal.tsx`.
+  + Tai lieu: `docs/chat-backend-architecture.md` (cập nhật bỏ mục QuickMessagesModal).
+  + Web Production Bundle: `dist/index.html` và assets (`assets/index-D3-Vcgvk.js`, `assets/index-BdJr3Zbl.css`).
+- Noi dung thay doi & Luong anh huong:
+  1. **Web App**:
+     - Nút sấm sét ⚡ trên thanh công cụ soạn thảo tin nhắn đã được loại bỏ hoàn toàn.
+     - Thanh công cụ soạn tin nhắn giữ nguyên vẹn các nút tính năng chuẩn: Gửi ảnh, Kẹp file đính kèm, Sticker/Emoji, Ghi âm thoại, và Tạo bình chọn nhóm (Poll).
+     - Luồng nhập văn bản, draft tin nhắn, gửi tin nhắn, phím tắt Enter hoàn toàn không bị ảnh hưởng.
+  2. **Mobile App**:
+     - Bảng menu "Thao tác khác" (+) (`ChatMorePanel.tsx`) loại bỏ mục "Tin nhắn nhanh", giữ nguyên tất cả các mục tiện ích: Vị trí, Máy ảnh, Tài liệu, Nhắc hẹn, Danh thiếp, GIF, Vẽ tay, Định dạng chữ, Tạo bình chọn.
+     - `ChatDetailScreen.tsx` không còn import, state hay modal thừa.
+  3. **Độ an toàn hệ thống**:
+     - Không có side-effects tới bất kỳ cơ chế lưu trữ hoặc luồng gửi tin nào khác.
+     - Mã nguồn sạch sẽ, không có unused imports, 0 linter errors.
+- Lenh kiem thu:
+  + `npm run lint`: PASS 0 errors.
+  + `npm run test:frontend`: PASS 470/470 tests.
+  + `npm run build:production`: PASS built in 972ms.
+  + Deploy lên server `192.168.80.20`: PASS `HTTP/1.1 200 OK` (nginx 1.28.1 reloaded).
+
 ## 2026-10-12-06 - Đề xuất "Gửi lại" (Retry) cho tin nhắn gửi thất bại & Tối ưu luồng gửi tin nhắn tránh lỗi mạng:
 
 - Thoi gian: 2026-10-12 15:40 (Asia/Saigon)

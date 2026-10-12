@@ -8,7 +8,7 @@ import ConversationErrorBoundary from '../components/ConversationErrorBoundary';
 import useDialogFocusTrap from '../components/useDialogFocusTrap';
 import ConversationListToolbar from '../features/chat/components/ConversationListToolbar';
 import ZaloCrmHeaderControls from '../features/chat/components/ZaloCrmHeaderControls';
-import QuickMessagesModal from '../features/chat/components/QuickMessagesModal';
+
 import { isTinodeConfigured, tinodeClient, normalizeTinodeConversation, normalizeTinodeMediaUrl } from '../features/chat/services/tinodeClient';
 import { shouldRetryProtectedMediaAfterSession } from '../features/chat/services/mediaRetryPolicy';
 import { startBrowserPresence } from '../features/chat/services/browserPresence';
@@ -3559,7 +3559,6 @@ function App() {
   const [messageSearchLoading, setMessageSearchLoading] = useState(false);
   const [messageSearchError, setMessageSearchError] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showQuickMessages, setShowQuickMessages] = useState(false);
   const [isSyncingZaloProfile, setIsSyncingZaloProfile] = useState(false);
   const [pollComposer, setPollComposer] = useState(null);
   const [isCreatingPoll, setIsCreatingPoll] = useState(false);
@@ -16856,17 +16855,6 @@ function App() {
                 <i className="fa-solid fa-square-poll-vertical"></i>
               </button>
             )}
-            <button
-              type="button"
-              className={`btn-input-action quick-message-action ${showQuickMessages ? 'active' : ''}`}
-              title={appCopy.t('Tin nhắn mẫu')}
-              aria-label={appCopy.t('Mở tin nhắn mẫu')}
-              aria-expanded={showQuickMessages}
-              onClick={() => setShowQuickMessages(previous => !previous)}
-              disabled={realtimeMessagingPending || activeChat.isChatbot || isRecordingVoice || !canSendInActiveGroup}
-            >
-              <i className="fa-solid fa-bolt"></i>
-            </button>
           </div>}
           <div className={`input-text-container ${isRecordingVoice ? 'voice-recording-container' : ''}`}>
             {isRecordingVoice ? (
@@ -16956,22 +16944,6 @@ function App() {
             {appCopy.t(editingMessage ? (isSavingMessageEdit ? 'Đang lưu...' : 'Lưu thay đổi') : activeChat.isChatbot && isTyping ? 'Đang tìm...' : activeChat.isChatbot ? 'Hỏi AI' : 'Gửi')}
           </button>
         </div>
-        )}
-        {showQuickMessages && (
-          <QuickMessagesModal
-            isOpen={showQuickMessages}
-            onClose={() => setShowQuickMessages(false)}
-            onSelectMessage={(msgText) => {
-              updateCurrentDraft(inputText ? `${inputText} ${msgText}` : msgText);
-              setShowQuickMessages(false);
-              requestAnimationFrame(() => messageInputRef.current?.focus());
-            }}
-            onSendMessage={(msgText) => {
-              setShowQuickMessages(false);
-              void handleSendMessage(msgText);
-            }}
-            copy={appCopy}
-          />
         )}
         {pollComposer && (
           <div

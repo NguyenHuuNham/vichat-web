@@ -23,7 +23,6 @@ import { TypingIndicator } from '../../components/TypingIndicator';
 import { Sticker, ChatMessage, ContactCardAttachment, ConversationMember, LocationAttachment, PickerFile, Poll, RecallMode, User } from '../../types';
 import { StickerPicker } from '../../components/StickerPicker';
 import { ChatMorePanel } from '../../components/ChatMorePanel';
-import { QuickMessagesModal } from '../../components/QuickMessagesModal';
 import { ContactPickerModal } from '../../components/ContactPickerModal';
 import { LocationPickerModal } from '../../components/LocationPickerModal';
 import { liveLocationService } from '../../services/liveLocationService';
@@ -150,7 +149,6 @@ export function ChatDetailScreen({ route, navigation }: Props) {
   }, []);
   const [pollComposerOpen, setPollComposerOpen] = useState(false);
   const [morePanelOpen, setMorePanelOpen] = useState(false);
-  const [quickMessagesOpen, setQuickMessagesOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [activeLiveSession, setActiveLiveSession] = useState(() => liveLocationService.getActiveSession());
@@ -915,14 +913,6 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     }
   };
 
-  const submitQuickMessage = (quickText: string, sendImmediately = false) => {
-    if (sendImmediately) {
-      void submitText(quickText);
-    } else {
-      updateComposerText(quickText);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  };
 
   const submitGroupEvent = async (event: any) => {
     if (!conversation) return;
@@ -1666,10 +1656,6 @@ export function ChatDetailScreen({ route, navigation }: Props) {
               setMorePanelOpen(false);
               setGroupEventModalOpen(true);
             }}
-            onSelectQuickMessages={() => {
-              setMorePanelOpen(false);
-              setQuickMessagesOpen(true);
-            }}
             onSelectContact={() => {
               setMorePanelOpen(false);
               setContactModalOpen(true);
@@ -1712,11 +1698,6 @@ export function ChatDetailScreen({ route, navigation }: Props) {
       />
       <StickerPicker visible={stickerPickerOpen} onClose={() => setStickerPickerOpen(false)} onSelect={sticker => { void submitSticker(sticker); }} />
       <PollComposer visible={pollComposerOpen} allowPin={canPinMessages} onClose={() => setPollComposerOpen(false)} onSubmit={poll => { void submitPoll(poll); }} />
-      <QuickMessagesModal
-        visible={quickMessagesOpen}
-        onClose={() => setQuickMessagesOpen(false)}
-        onSelect={submitQuickMessage}
-      />
       <ContactPickerModal
         visible={contactModalOpen}
         members={conversation.members || []}
