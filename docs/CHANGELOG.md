@@ -6,6 +6,33 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-02 - Loại bỏ các cuộc trò chuyện trực tiếp rỗng (chưa từng nhắn tin) và chuẩn hóa lọc dummy message placeholder trên Mobile & Web:
+
+- Thoi gian: 2026-10-12 14:10 (Asia/Saigon)
+- Loai: Sua loi (Bugfix) | UI/UX Refinement | Mobile & Web Conversation Sync
+- Trang thai: Hoan tat 100%, 51/51 test files (242/242 tests) mobile PASS, 52/52 tests chatRealtime PASS, 468/468 tests Web frontend PASS, oxlint 0 errors.
+- Muc tieu: Khắc phục triệt để hiện tượng xuất hiện danh sách hội thoại direct rác với preview "Chưa có tin nhắn" khi user chưa từng nhắn tin và topic chưa có trên Tinode. Đảm bảo chuẩn UX cho danh sách hội thoại: chỉ hiển thị khi có tin nhắn thật hoặc badge hoặc kênh Omni/Group/Bot.
+- Pham vi:
+  + Mobile (`mobile/src/utils/conversationSync.ts`, `mobile/src/utils/conversationSync.test.ts`)
+  + Web Realtime Service (`src/features/chat/services/chatRealtime.js`, `src/features/chat/services/chatRealtime.test.js`)
+  + Web App (`src/app/App.jsx`)
+- Nguyen nhan goc re:
+  1. Trong `mobile/src/utils/conversationSync.ts`, biểu thức `hasActivity` kiểm tra `Boolean(String(conversation.lastMsg || '').trim())` không loại trừ các chuỗi dummy placeholder như `'Chưa có tin nhắn'`, `'Bắt đầu cuộc trò chuyện'`, `'Nhóm mới được tạo'`. Đồng thời `if (!hasActivity) return conversation.historyVerified !== true` khiến các topic direct rỗng chưa từng tồn tại trên Tinode (vốn không bao giờ verified) bị ép hiển thị vĩnh viễn trên danh sách chat.
+  2. Trong `src/app/App.jsx`, dữ liệu khởi tạo `remoteRooms` tự động gán fallback `lastMsg: room.lastMsg || 'Chưa có tin nhắn'`, khiến `shouldShowConversation` trong `chatRealtime.js` hiểu nhầm là đã có nội dung tin nhắn hoạt động và giữ lại toàn bộ các cuộc trò chuyện rỗng từ Chat Management backend.
+- Giai phap thuc hien:
+  1. Định nghĩa hằng `EMPTY_CONVERSATION_PREVIEWS` và hàm `meaningfulConversationPreview` trên Mobile tương tự Web để nhận diện các preview giả.
+  2. Cập nhật `isConversationVisibleInList` trên Mobile: đối với cuộc trò chuyện 1-1 nội bộ, nếu không có tin nhắn thật (`latestMessageAt === 0`), không có tin nhắn mảng, không có unread badge và không có preview thật thì ẩn hoàn toàn khỏi danh sách hội thoại (`return false`).
+  3. Cập nhật `mergeConversation` trên Mobile: không lưu fallback dummy preview vào `lastMsg`.
+  4. Cập nhật `shouldShowConversation` trên Web: sử dụng `meaningfulConversationPreview` để bỏ qua các dummy placeholder.
+  5. Cập nhật `src/app/App.jsx`: bỏ việc gán `'Chưa có tin nhắn'` vào thuộc tính `lastMsg` của room data model.
+  6. Bảo toàn đầy đủ tất cả các luồng chức năng khác: Chat nhóm (Group), ViChat AI (Chatbot), kênh Omni (Zalo OA, LiveChat), xóa cuộc trò chuyện (`deletedAt`), mở chat từ Danh bạ (Contacts).
+- Lenh kiem thu:
+  + `vitest run src/utils/conversationSync.test.ts` (Mobile): PASS 26/26 tests.
+  + `npx vitest run` (Mobile toàn bộ): PASS 51 files, 242 tests.
+  + `node --test src/features/chat/services/chatRealtime.test.js` (Web): PASS 52/52 tests.
+  + `npm run test:frontend` (Web toàn bộ): PASS 468/468 tests.
+  + `npm run lint`: PASS 0 errors.
+
 ## 2026-10-12-01 - Tái cấu trúc và nâng cấp toàn diện phân hệ Workspace ViChat (Đồng bộ Web-Mobile, My Daily Agenda, Command Center cho Sếp & Mapping UPGO):
 
 - Thoi gian: 2026-10-12 11:30 (Asia/Saigon)

@@ -47,6 +47,17 @@ function isConversationActivityMessage(message: ChatMessage) {
   return !['reaction', 'recall', 'edit', 'poll_event', 'system', 'live_location_event'].includes(message.type);
 }
 
+export const EMPTY_CONVERSATION_PREVIEWS = new Set([
+  'Chưa có tin nhắn',
+  'Bắt đầu cuộc trò chuyện',
+  'Nhóm mới được tạo',
+]);
+
+export function meaningfulConversationPreview(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return EMPTY_CONVERSATION_PREVIEWS.has(text) ? '' : text;
+}
+
 export function latestConversationMessageTimestamp(conversation: Partial<Conversation>) {
   return (conversation.messages || [])
     .filter(isConversationActivityMessage)
@@ -56,11 +67,22 @@ export function latestConversationMessageTimestamp(conversation: Partial<Convers
 /** Hide empty direct-chat records while keeping groups available for their first message. */
 export function isConversationVisibleInList(conversation: Conversation) {
   if (conversation.isGroup || conversation.isChatbot) return true;
+  if (conversation.channel === 'zalo_oa' || conversation.channel === 'livechat' || conversation.channelType === 'zalo_oa' || conversation.channelType === 'livechat') return true;
+  const idStr = String(conversation.id || '');
+  const topicStr = String(conversation.tinodeTopic || '');
+  if (idStr.startsWith('zalo:') || idStr.startsWith('livechat:') || topicStr.startsWith('zalo:') || topicStr.startsWith('livechat:')) return true;
+
   const latestMessageAt = latestConversationMessageTimestamp(conversation);
   const deletedAt = parseTimestamp(conversation.deletedAt);
   if (deletedAt) return latestMessageAt > deletedAt;
-  const hasActivity = latestMessageAt > 0 || Boolean(String(conversation.lastMsg || '').trim()) || Number(conversation.badge) > 0;
-  if (!hasActivity) return conversation.historyVerified !== true;
+
+  const preview = meaningfulConversationPreview(conversation.lastMsg);
+  const hasActivity = latestMessageAt > 0
+    || Boolean(preview)
+    || Number(conversation.badge) > 0
+    || (Array.isArray(conversation.messages) && conversation.messages.some(isConversationActivityMessage));
+
+  if (!hasActivity) return false;
   return true;
 }
 
@@ -506,7 +528,7 @@ export function mergeConversation(first: Conversation, second: Conversation): Co
     participantIds,
     pendingMembers,
     messages: enrichedMessages,
-    lastMsg: latestMessageText || preferred.lastMsg || fallback.lastMsg,
+    lastMsg: latestMessageText || meaningfulConversationPreview(preferred.lastMsg) || meaningfulConversationPreview(fallback.lastMsg) || '',
     time: latestMessage?.time || preferred.time || fallback.time,
     updatedAt: preferredUpdatedAt || (activity > 0 ? new Date(activity).toISOString() : undefined),
     deletedAt: deletedTimestamp > 0 && latestUserMessageAt > deletedTimestamp ? '' : preferredDeletedAt,

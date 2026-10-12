@@ -3229,7 +3229,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
         } : {}),
         name: roomName,
         messages: [],
-        lastMsg: room.lastMsg || 'Chưa có tin nhắn',
+        lastMsg: room.lastMsg || '',
         time: room.time || '',
         badge: 0,
       };
@@ -3251,7 +3251,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
       isChatbot: false,
       accountSession,
       messages: Array.isArray(room.messages) ? room.messages : [],
-      lastMsg: room.lastMsg || room.lastMessage || 'Chưa có tin nhắn',
+      lastMsg: room.lastMsg || room.lastMessage || '',
       time: room.time || '',
       badge: Number(room.badge) || 0,
     }));
@@ -3272,7 +3272,7 @@ function managementRoomsForSession(managed, accounts, user, accountSession) {
       isChatbot: false,
       accountSession,
       messages: Array.isArray(room.messages) ? room.messages : [],
-      lastMsg: room.lastMsg || room.lastMessage || 'Chưa có tin nhắn',
+      lastMsg: room.lastMsg || room.lastMessage || '',
       time: room.time || '',
       badge: Number(room.badge) || 0,
     }));

@@ -721,6 +721,9 @@ test('conversation list hides empty direct metadata until Tinode history or a dr
   };
 
   assert.equal(shouldShowConversation(emptyManagedDirect), false);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, lastMsg: 'Chưa có tin nhắn' }), false);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, lastMsg: 'Bắt đầu cuộc trò chuyện' }), false);
+  assert.equal(shouldShowConversation({ ...emptyManagedDirect, lastMsg: 'Chào bạn nhé' }), true);
   assert.equal(shouldShowConversation(emptyManagedDirect, 'Dang soan'), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, messages: [null, { id: 'message-1' }] }), true);
   assert.equal(shouldShowConversation({ ...emptyManagedDirect, isGroup: true }), true);

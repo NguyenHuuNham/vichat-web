@@ -701,8 +701,8 @@ export function shouldShowConversation(room, draft = '') {
   if (String(draft || '').trim()) return true;
   if (room.channel === 'zalo_oa' || room.channel === 'zalo' || room.channel === 'livechat' || room.channel === 'facebook') return true;
   if (String(room.id || '').startsWith('zalo:') || String(room.id || '').startsWith('livechat:') || String(room.id || '').startsWith('fb:')) return true;
-  if (String(room.lastMsg || room.lastMessage || '').trim()) return true;
-  return Array.isArray(room.messages) && room.messages.some(Boolean);
+  if (meaningfulConversationPreview(room.lastMsg || room.lastMessage)) return true;
+  return Array.isArray(room.messages) && room.messages.some(msg => msg && !['reaction', 'recall', 'edit', 'poll_event', 'system', 'live_location_event'].includes(msg.type));
 }
 
 export function ensureConversationEntry(conversations = {}, conversationId, fallbackRoom) {
