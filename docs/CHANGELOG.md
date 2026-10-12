@@ -6,6 +6,34 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-06 - Đề xuất "Gửi lại" (Retry) cho tin nhắn gửi thất bại & Tối ưu luồng gửi tin nhắn tránh lỗi mạng:
+
+- Thoi gian: 2026-10-12 15:40 (Asia/Saigon)
+- Loai: Feature | Bugfix | UI/UX Reliability | Network Resiliency
+- Trang thai: Hoan tat 100%, 471/471 tests Web frontend PASS, linter 0 errors, build production Web PASS, deploy len server `192.168.80.20` thanh cong (nginx 1.28.1 reload 200 OK).
+- Muc tieu: Bổ sung cơ chế đề xuất "Gửi lại" (Retry) trực quan và tiện lợi khi tin nhắn gửi thất bại (như khi mất mạng hoặc kết nối realtime bị gián đoạn); khắc phục hiện tượng gửi tin nhắn bị ném mã lỗi kỹ thuật do gọi lặp backend `ensureTinodeConversationTopic` không cần thiết.
+- Pham vi:
+  + Web App: `src/app/App.jsx`
+  + Web Stylesheet: `src/styles/index.css`
+  + Web i18n: `src/features/i18n/appLanguage.js`
+  + Web Unit Test: `src/features/chat/services/chatManagementService.test.js`
+  + Web Production Bundle: `dist/index.html` va assets
+- Nguyen nhan goc re & Giai phap thuc hien:
+  1. **Cơ chế đề xuất Gửi lại (Retry)**:
+     - Trước đây khi tin nhắn gửi đi thất bại (do mất mạng, rớt websocket, hoặc transport closed), tin nhắn chỉ hiển thị dấu chấm than đỏ tĩnh mà không có nút gửi lại, buộc người dùng phải gõ lại hoặc copy-paste.
+     - Đã bổ sung thanh đề xuất `.message-failed-retry-bar` (`Chưa gửi được` kèm nút nổi bật `Gửi lại`) ngay dưới bong bóng tin nhắn; cho phép click trực tiếp vào icon lỗi `.read-status-failed-action` để gửi lại; bổ sung tùy chọn "Gửi lại tin nhắn" trong menu chuột phải.
+     - Hàm `handleRetryMessage` xử lý mượt mà việc chuyển trạng thái sang `pending: true` (hiện spinner đang gửi) và thử gửi lại tin nhắn text, sticker, Zalo, livechat hoặc chatbot.
+  2. **Tối ưu luồng gửi tin nhắn & chuẩn hóa thông báo lỗi**:
+     - Trong `handleSendMessage`, việc luôn gọi `ensureTinodeConversationTopic` vô điều kiện gây ra các request prepare/bind HTTP thừa thãi trên từng tin nhắn. Khi kết nối gặp biến động (`Cannot write to closing transport`), nó ném lỗi kỹ thuật thô.
+     - Thiết lập đường dẫn nhanh (fast path) trong `handleSendMessage`: nếu `cachedTopic` đã tồn tại (`conversations[currentChatId]?.tinodeTopic || activeChat.tinodeTopic`) thì gửi trực tiếp qua `tinodeClient.sendText` trong 0ms mà không gọi lại `prepare/bind` lặp lại.
+     - Bắt lỗi mạng / transport đóng thông minh và hiển thị thông báo thân thiện: "Kết nối mạng gián đoạn. Bạn có thể bấm 'Gửi lại' để thử lại." thay vì mã lỗi kỹ thuật thô.
+- Lenh kiem thu:
+  + `npm run lint`: PASS 0 errors (70 warnings).
+  + `node --test src/features/chat/services/chatManagementService.test.js`: PASS 74/74 tests.
+  + `npm run test:frontend`: PASS 471/471 tests.
+  + `npm run build:production`: PASS built in 1.03s.
+  + Deploy lên server `192.168.80.20`: PASS `HTTP/1.1 200 OK` (nginx 1.28.1 reloaded).
+
 ## 2026-10-12-05 - Đồng bộ màu sắc nút Tạo bình chọn (Poll) trên thanh công cụ chat Web:
 
 - Thoi gian: 2026-10-12 15:20 (Asia/Saigon)

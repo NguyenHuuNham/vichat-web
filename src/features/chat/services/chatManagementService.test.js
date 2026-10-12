@@ -1132,3 +1132,23 @@ test('conversation mute flow supports context menu toggle and resilient optimist
   // Optimistic mute updates UI first without throwing blocking permission errors to user
   assert.match(appSource, /console\.warn\('\[ViChat\] Backend notification-settings sync deferred:', error\?\.message\)/);
 });
+
+test('failed message retry flow supports retry button, retry bar proposal and context menu action', () => {
+  // App provides handleRetryMessage
+  assert.match(appSource, /const handleRetryMessage = async/);
+  // Delivery status icon allows retrying on click
+  assert.match(appSource, /read-status-failed-action/);
+  // Outgoing failed message renders retry proposal bar
+  assert.match(appSource, /message-failed-retry-bar/);
+  assert.match(appSource, /message-retry-action-btn/);
+  // Message context menu supports retry
+  assert.match(appSource, /menuMessage\.failed \|\| menuMessage\.deliveryStatus === 'failed'/);
+  assert.match(appSource, /action === 'retry'/);
+  // Cached topic fast path in handleSendMessage
+  assert.match(appSource, /const cachedTopic = conversations\[currentChatId\]\?\.tinodeTopic \|\| activeChat\.tinodeTopic/);
+  // CSS contains retry bar and button styling
+  assert.match(stylesSource, /\.message-failed-retry-bar/);
+  assert.match(stylesSource, /\.message-retry-action-btn/);
+  assert.match(stylesSource, /\.read-status-failed-action/);
+});
+

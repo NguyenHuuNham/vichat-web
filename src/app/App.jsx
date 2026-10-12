@@ -13355,6 +13355,10 @@ function App() {
     ) return;
     const isOwnMessage = message.senderId === viewerId || message.sender === 'outgoing';
     try {
+      if (action === 'retry') {
+        void handleRetryMessage(message);
+        return;
+      }
       if (action === 'create-task') {
         const conversationId = activeChat.managementId || activeChat.id;
         if (!isManagementConversationId(conversationId)) {
@@ -13976,7 +13980,12 @@ function App() {
 
     if (chatMode === 'tinode') {
       const roomId = currentChatId;
-      ensureTinodeConversationTopic(conversations[currentChatId])
+      const cachedTopic = conversations[currentChatId]?.tinodeTopic || activeChat.tinodeTopic;
+      const topicPromise = cachedTopic
+        ? Promise.resolve(cachedTopic)
+        : ensureTinodeConversationTopic(conversations[currentChatId]);
+
+      topicPromise
         .then(async topicName => {
           const chatbotMentioned = mentions.some(mention => mention.isBot)
             || mentionTokenExists(text, '@ViChatAI');
@@ -14018,14 +14027,191 @@ function App() {
               [roomId]: (blocked || spamBlocked) ? removeMessageFromConversation(currentRoom, newMsg, previousActivity) : {
                 ...currentRoom,
                 messages: roomMessages(currentRoom).map(message => message.id === newMsg.id
-                  ? { ...message, pending: false, failed: true }
+                  ? { ...message, pending: false, failed: true, error: err?.message }
                   : message),
               },
             };
           });
           if ((blocked || spamBlocked) && textToSend === null) updateCurrentDraft(text);
-          if (!blocked && !spamBlocked) setChatError(err?.message || 'Không thể gửi tin nhắn.');
+          if (!blocked && !spamBlocked) {
+            const isConnError = /closing transport|network|websocket|offline|disconnected|closed|failed to fetch/i.test(err?.message || '');
+            if (isConnError) {
+              setChatError(appCopy.t('Kết nối mạng gián đoạn. Bạn có thể bấm "Gửi lại" để thử lại.'));
+            } else {
+              setChatError(err?.message || 'Không thể gửi tin nhắn.');
+            }
+          }
         });
+    }
+  };
+
+  const handleRetryMessage = async failedMessage => {
+    if (!failedMessage) return;
+    const roomId = currentChatId;
+    const room = conversations[roomId] || activeChat;
+    if (!room) return;
+
+    if (!allowDirectMessagingAttempt(room)) return;
+    if (room.isGroup && !canSendInActiveGroup) {
+      setChatError(appCopy.t('Quản trị viên đã tạm khóa quyền gửi tin nhắn trong nhóm.'));
+      return;
+    }
+
+    setConversations(previous => {
+      const currentRoom = previous[roomId];
+      if (!currentRoom) return previous;
+      return {
+        ...previous,
+        [roomId]: {
+          ...currentRoom,
+          messages: roomMessages(currentRoom).map(m => (m.id === failedMessage.id
+            ? { ...m, pending: true, failed: false, error: null }
+            : m)),
+        },
+      };
+    });
+
+    try {
+      if (room.isChatbot) {
+        if (chatMode === 'tinode' && room.tinodeTopic) {
+          const result = await tinodeClient.sendText(
+            room.tinodeTopic,
+            failedMessage.text,
+            failedMessage.id,
+            { ...(failedMessage.replyTo ? { replyTo: failedMessage.replyTo } : {}), mentions: failedMessage.mentions || [] },
+          );
+          setConversations(previous => {
+            const currentRoom = previous[roomId];
+            if (!currentRoom) return previous;
+            return {
+              ...previous,
+              [roomId]: {
+                ...currentRoom,
+                messages: roomMessages(currentRoom).map(m => (m.id === failedMessage.id
+                  ? { ...m, pending: false, failed: false, seq: m.seq || result?.params?.seq }
+                  : m)),
+              },
+            };
+          });
+        } else {
+          void handleSendMessage(failedMessage.text);
+        }
+        return;
+      }
+
+      if (room.channel === 'zalo_oa' || String(room.id || '').startsWith('zalo:')) {
+        const zaloUserId = room.zalo_user_id || room.userId || room.id.replace(/^zalo:[^:]*:/, '').replace(/^zalo:/, '');
+        const oaId = room.oa_id || '262829019064124420';
+        const agentName = currentUser?.name || 'Nhân viên CSKH';
+        const sendResult = await chatManagementService.sendZaloMessage({
+          userId: zaloUserId,
+          message: failedMessage.text,
+          oaId,
+          agentName,
+        });
+        if (sendResult?.error || sendResult?.needs_auth) {
+          throw new Error(sendResult?.message || sendResult?.error || 'Lỗi gửi tin Zalo');
+        }
+        setConversations(previous => ({
+          ...previous,
+          [roomId]: {
+            ...previous[roomId],
+            messages: roomMessages(previous[roomId]).map(m => (m.id === failedMessage.id
+              ? { ...m, pending: false, failed: false, message_id: sendResult.message_id }
+              : m)),
+          },
+        }));
+        return;
+      }
+
+      if (room.channel === 'livechat' || room.sourceType === 'livechat' || String(room.id || '').startsWith('livechat:')) {
+        const agentName = currentUser?.name || 'Nhân viên CSKH';
+        const agentId = currentUser?.id || 'agent';
+        const sendResult = await chatManagementService.sendLivechatMessage({
+          conversationId: room.id,
+          message: failedMessage.text,
+          agentId,
+          agentName,
+        });
+        if (sendResult?.error) {
+          throw new Error(sendResult.message || sendResult.error);
+        }
+        setConversations(previous => ({
+          ...previous,
+          [roomId]: {
+            ...previous[roomId],
+            messages: roomMessages(previous[roomId]).map(m => (m.id === failedMessage.id
+              ? { ...m, pending: false, failed: false, message_id: sendResult.message_id }
+              : m)),
+          },
+        }));
+        return;
+      }
+
+      if (chatMode === 'tinode') {
+        const cachedTopic = room.tinodeTopic || activeChat.tinodeTopic;
+        const topicName = cachedTopic || await ensureTinodeConversationTopic(room);
+        const sharedReplyMeta = replyMetadataForTransport(failedMessage.replyTo, directoryAccounts);
+        const mentions = (failedMessage.mentions || []).filter(Boolean);
+
+        if (failedMessage.sticker) {
+          const result = await tinodeClient.sendSticker(topicName, failedMessage.sticker, failedMessage.id, {
+            replyTo: sharedReplyMeta,
+          });
+          setConversations(previous => {
+            const currentRoom = previous[roomId];
+            if (!currentRoom) return previous;
+            return {
+              ...previous,
+              [roomId]: {
+                ...currentRoom,
+                messages: roomMessages(currentRoom).map(m => (m.id === failedMessage.id
+                  ? { ...m, pending: false, failed: false, seq: m.seq || result?.params?.seq }
+                  : m)),
+              },
+            };
+          });
+          return;
+        }
+
+        const result = await tinodeClient.sendText(topicName, failedMessage.text, failedMessage.id, {
+          ...(sharedReplyMeta ? { replyTo: sharedReplyMeta } : {}),
+          mentions,
+        });
+        setConversations(previous => {
+          const currentRoom = previous[roomId];
+          if (!currentRoom) return previous;
+          return {
+            ...previous,
+            [roomId]: {
+              ...currentRoom,
+              messages: roomMessages(currentRoom).map(m => (m.id === failedMessage.id
+                ? { ...m, pending: false, failed: false, seq: m.seq || result?.params?.seq }
+                : m)),
+            },
+          };
+        });
+      }
+    } catch (err) {
+      setConversations(previous => {
+        const currentRoom = previous[roomId];
+        if (!currentRoom) return previous;
+        return {
+          ...previous,
+          [roomId]: {
+            ...currentRoom,
+            messages: roomMessages(currentRoom).map(m => (m.id === failedMessage.id
+              ? { ...m, pending: false, failed: true, error: err?.message }
+              : m)),
+          },
+        };
+      });
+      const isConnError = /closing transport|network|websocket|offline|disconnected|closed|failed to fetch/i.test(err?.message || '');
+      if (isConnError) {
+        setChatError(appCopy.t('Kết nối mạng gián đoạn. Bạn có thể bấm "Gửi lại" để thử lại.'));
+      } else {
+        setChatError(err?.message || appCopy.t('Không thể gửi lại tin nhắn.'));
+      }
     }
   };
 
@@ -14762,7 +14948,20 @@ function App() {
 
   const deliveryStatusIcon = message => {
     if (message.failed || message.deliveryStatus === 'failed') {
-      return <i className="fa-solid fa-circle-exclamation read-status failed" title={appCopy.t('Gửi thất bại')}></i>;
+      return (
+        <button
+          type="button"
+          className="read-status-failed-action"
+          onClick={event => {
+            event.stopPropagation();
+            void handleRetryMessage(message);
+          }}
+          title={appCopy.t('Gửi thất bại · Bấm để gửi lại')}
+          aria-label={appCopy.t('Gửi lại tin nhắn')}
+        >
+          <i className="fa-solid fa-circle-exclamation read-status failed"></i>
+        </button>
+      );
     }
     if (message.pending || message.deliveryStatus === 'sending') {
       return <i className="fa-solid fa-spinner fa-spin read-status pending" title={appCopy.t('Đang gửi')}></i>;
@@ -16329,6 +16528,26 @@ function App() {
                       <button type="button" className="message-action-button message-more-action" onClick={event => { event.stopPropagation(); openMessageMenu(event, msg); }} aria-label={appCopy.t('Tùy chọn tin nhắn')}><i className="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                     </div>
                   </div>
+                  {isOutgoing && (msg.failed || msg.deliveryStatus === 'failed') && (
+                    <div className="message-failed-retry-bar">
+                      <span className="message-failed-hint">
+                        <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                        {appCopy.t('Chưa gửi được')}
+                      </span>
+                      <button
+                        type="button"
+                        className="message-retry-action-btn"
+                        onClick={event => {
+                          event.stopPropagation();
+                          void handleRetryMessage(msg);
+                        }}
+                        title={appCopy.t('Thử gửi lại tin nhắn')}
+                      >
+                        <i className="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                        <span>{appCopy.t('Gửi lại')}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
                 </div>
               </React.Fragment>
@@ -16393,6 +16612,11 @@ function App() {
             if (typeof document === 'undefined' || !document.body) return null;
             return createPortal(
               <div className="message-context-menu" style={{ left: messageMenu.left, top: messageMenu.top }} onClick={event => event.stopPropagation()}>
+                {(menuMessage.failed || menuMessage.deliveryStatus === 'failed') && (
+                  <button type="button" className="retry-action" onClick={() => handleMessageAction('retry', menuMessage)}>
+                    <i className="fa-solid fa-rotate-right"></i>{appCopy.t('Gửi lại tin nhắn')}
+                  </button>
+                )}
                 <button type="button" onClick={() => handleMessageAction('copy', menuMessage)}><i className="fa-regular fa-copy"></i>{appCopy.t('Copy tin nhắn')}</button>
                 {canEditMessage && <button type="button" onClick={() => handleMessageAction('edit', menuMessage)}><i className="fa-solid fa-pen-to-square"></i>{appCopy.t('Sửa tin nhắn')}</button>}
                 <button type="button" onClick={() => handleMessageAction('mark', menuMessage)}><i className={`fa-${marked ? 'solid' : 'regular'} fa-star`}></i>{appCopy.t(marked ? 'Bỏ đánh dấu' : 'Đánh dấu tin nhắn')}</button>
