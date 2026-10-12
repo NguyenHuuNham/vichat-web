@@ -3742,11 +3742,11 @@ function App() {
   const mediaHistoryCacheRef = useRef(new Map());
   const mediaHistoryRequestsRef = useRef(new Map());
   const notificationOpenHandlerRef = useRef(null);
+  const draftDebounceTimerRef = useRef(null);
   const draftsRef = useRef(drafts);
   if (!draftDebounceTimerRef.current) {
     draftsRef.current = drafts;
   }
-  const draftDebounceTimerRef = useRef(null);
   const chatScrollRafRef = useRef(null);
   const messageMenuRef = useRef(messageMenu);
   messageMenuRef.current = messageMenu;
