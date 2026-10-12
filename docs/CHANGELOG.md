@@ -6,6 +6,42 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
+## 2026-10-12-03 - Chuẩn hóa Tin nhắn mẫu phản hồi (Quick Messages) rỗng mặc định và cho phép tự thêm trên Web & Mobile:
+
+- Thoi gian: 2026-10-12 14:35 (Asia/Saigon)
+- Loai: Refactor | Business Logic | Data Normalization | Web & Mobile Quick Messages
+- Trang thai: Hoan tat 100%, 469/469 tests Web frontend PASS, 242/242 tests Mobile PASS, linter 0 errors. Đã build production & deploy Web lên server `192.168.80.20` và build APK debug `D:\vichat-build\ViChat-v1058-workspace-debug.apk`.
+- Muc tieu: Xóa bỏ triệt để các tin nhắn mẫu mock/ảo (như "Tư vấn trả góp", "Hoàng Hà Mobile", "Kiểm tra tồn kho", v.v.). Thiết lập trạng thái mặc định ban đầu là rỗng (`[]`), để người dùng/doanh nghiệp tự tạo mẫu theo nghiệp vụ riêng; tuyệt đối không tự chèn dữ liệu ảo vào hệ thống.
+- Pham vi:
+  + Web Component: `src/features/chat/components/QuickMessagesModal.jsx`
+  + Web Unit Test: `src/features/chat/components/QuickMessagesModal.test.js`
+  + Web Test Script: `package.json` (`test:frontend` bổ sung QuickMessagesModal test)
+  + Mobile Component: `mobile/src/components/QuickMessagesModal.tsx`
+  + Web Production Bundle: `dist/index.html` và assets
+- Noi dung thuc hien:
+  1. Trên Web (`src/features/chat/components/QuickMessagesModal.jsx`):
+     - Thiết lập `DEFAULT_QUICK_MESSAGES = []`.
+     - Bổ sung bộ lọc `LEGACY_MOCK_IDS` nhận diện và tự động loại bỏ các ID mock cũ (`qm_tra_gop`, `qm_chao_hoi`, `qm_ton_kho`, `qm_xin_sdt`, `qm_bao_gia`, `qm_bao_hanh`, `qm_hen_lien_he`, `qm_cam_on`) nếu còn tồn tại trong `localStorage`.
+     - Bổ sung giao diện Empty State chuyên nghiệp khi danh sách rỗng: icon Zap, tiêu đề "Chưa có tin nhắn mẫu nào", thông điệp hướng dẫn và nút `+ Tạo mẫu mới`.
+     - Cho phép xóa mọi mẫu do người dùng tự tạo (nút thùng rác luôn sẵn sàng cho từng tin nhắn).
+     - Category chips chỉ hiển thị khi có từ 2 danh mục trở lên để giao diện gọn gàng.
+     - Bảo toàn toàn bộ các luồng chức năng: tìm kiếm (Search), lọc danh mục, thêm mới kèm phân loại, chèn vào khung chat (`onSelect`), và gửi trực tiếp (`onSendImmediately`).
+  2. Trên Mobile (`mobile/src/components/QuickMessagesModal.tsx`):
+     - Thiết lập `DEFAULT_MESSAGES = []`.
+     - Bổ sung bộ lọc `LEGACY_DEFAULT_MESSAGES` để tự động dọn sạch các câu mock cũ trong `AsyncStorage`.
+     - Cập nhật `ListEmptyComponent` hiển thị Empty State đồng bộ Web với icon Zap, mô tả và nút bấm `+ Tạo mẫu mới`.
+     - Giữ nguyên các luồng thao tác: thêm mới tin nhắn, xóa tin nhắn mẫu, chèn vào input chat.
+  3. Kiểm thử & Đảm bảo chất lượng:
+     - Tạo file unit test `QuickMessagesModal.test.js` bao phủ các ca: khởi tạo mặc định rỗng, lọc bỏ mock cũ, thêm tin nhắn mẫu mới, xóa tin nhắn mẫu, tìm kiếm tin nhắn mẫu.
+     - Web frontend test: 469/469 tests PASS (`npm run test:frontend`).
+     - Mobile test suite: 51/51 test files (242/242 tests) PASS (`npx vitest run`).
+     - Linter: 0 errors (`npm run lint`).
+  4. Triển khai & Artifact:
+     - Web: Build `npm run build:production`, deploy lên server `192.168.80.20` qua SSH jump `103.74.122.206`, container `songhong-production-chat-1` reload nginx thành công.
+     - Mobile: Build APK debug thành công lưu tại `D:\vichat-build\ViChat-v1058-workspace-debug.apk` (88.68 MB).
+
+
+
 ## 2026-10-12-02 - Loại bỏ các cuộc trò chuyện trực tiếp rỗng (chưa từng nhắn tin) và chuẩn hóa lọc dummy message placeholder trên Mobile & Web:
 
 - Thoi gian: 2026-10-12 14:10 (Asia/Saigon)

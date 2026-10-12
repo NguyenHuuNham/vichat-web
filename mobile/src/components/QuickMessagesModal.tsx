@@ -8,14 +8,16 @@ import { ThemeColors } from '../theme/colors';
 
 const STORAGE_KEY = '@vichat_quick_messages';
 
-const DEFAULT_MESSAGES = [
+const DEFAULT_MESSAGES: string[] = [];
+
+const LEGACY_DEFAULT_MESSAGES = new Set([
   'Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể.',
   'Đã nhận được thông tin, tôi đang xử lý ngay.',
   'Vui lòng gửi lại cho tôi tài liệu chi tiết nhé.',
   'Tôi đang trên đường tới chỗ hẹn.',
   'Cảm ơn bạn rất nhiều!',
   'Xác nhận đã hoàn thành công việc.',
-];
+]);
 
 interface Props {
   visible: boolean;
@@ -45,14 +47,17 @@ export function QuickMessagesModal({ visible, onClose, onSelect }: Props) {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setMessages(parsed);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed
+            .map(item => typeof item === 'string' ? item.trim() : (item?.content ? String(item.content).trim() : ''))
+            .filter(item => Boolean(item) && !LEGACY_DEFAULT_MESSAGES.has(item));
+          setMessages(cleaned);
           return;
         }
       }
-      setMessages(DEFAULT_MESSAGES);
+      setMessages([]);
     } catch {
-      setMessages(DEFAULT_MESSAGES);
+      setMessages([]);
     }
   };
 
@@ -196,7 +201,20 @@ export function QuickMessagesModal({ visible, onClose, onSelect }: Props) {
             )}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
+                <View style={styles.emptyIconWrap}>
+                  <Zap color="#0984E3" size={24} />
+                </View>
                 <Text style={styles.emptyText}>{t('Chưa có tin nhắn nhanh nào.')}</Text>
+                <Text style={styles.emptySubText}>{t('Tạo các tin nhắn soạn sẵn để phản hồi nhanh khi đang bận.')}</Text>
+                {!isAdding ? (
+                  <Pressable
+                    onPress={() => setIsAdding(true)}
+                    style={styles.emptyAddBtn}
+                  >
+                    <Plus color="#fff" size={16} />
+                    <Text style={styles.emptyAddBtnText}>{t('Tạo mẫu mới')}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             }
           />
@@ -341,12 +359,45 @@ function createStyles(palette: ThemeColors) {
       padding: 6,
     },
     emptyContainer: {
-      paddingVertical: 32,
+      paddingVertical: 40,
+      paddingHorizontal: 24,
       alignItems: 'center',
     },
+    emptyIconWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: 'rgba(9, 132, 227, 0.1)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
     emptyText: {
-      fontSize: 14,
+      fontSize: 15,
+      fontWeight: '600',
+      color: palette.ink,
+      marginBottom: 4,
+    },
+    emptySubText: {
+      fontSize: 13,
       color: palette.muted,
+      textAlign: 'center',
+      marginBottom: 16,
+      lineHeight: 18,
+    },
+    emptyAddBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: palette.accent,
+      paddingHorizontal: 16,
+      paddingVertical: 9,
+      borderRadius: 18,
+    },
+    emptyAddBtnText: {
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: '600',
     },
   });
 }

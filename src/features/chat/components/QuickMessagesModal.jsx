@@ -2,56 +2,18 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const STORAGE_KEY = '@vichat_quick_messages';
 
-export const DEFAULT_QUICK_MESSAGES = [
-  {
-    id: 'qm_tra_gop',
-    title: 'Tư vấn trả góp',
-    content: 'Dạ bên em có hỗ trợ trả góp qua thẻ tín dụng (0% lãi suất) hoặc qua công ty tài chính / CCCD với lãi suất ưu đãi ạ. Anh/chị đang quan tâm dòng máy nào để em báo chi tiết gói trả góp phù hợp nhất cho mình nhé ạ!',
-    category: 'Tư vấn',
-  },
-  {
-    id: 'qm_chao_hoi',
-    title: 'Lời chào tư vấn',
-    content: 'Dạ Hoàng Hà Mobile xin chào anh/chị! Em có thể hỗ trợ tư vấn sản phẩm nào cho mình ạ?',
-    category: 'Chào hỏi',
-  },
-  {
-    id: 'qm_ton_kho',
-    title: 'Kiểm tra tồn kho chi nhánh',
-    content: 'Dạ anh/chị cho em xin khu vực hoặc quận/huyện mình tiện ghé qua để em kiểm tra chi nhánh gần nhất còn sẵn hàng và màu máy cho mình ạ.',
-    category: 'Kho & Chi nhánh',
-  },
-  {
-    id: 'qm_xin_sdt',
-    title: 'Xin số điện thoại tư vấn',
-    content: 'Dạ để chuyên viên có thể hỗ trợ nhanh và chi tiết nhất cho anh/chị, anh/chị cho em xin số điện thoại liên hệ nhé ạ!',
-    category: 'Thông tin',
-  },
-  {
-    id: 'qm_bao_gia',
-    title: 'Báo giá & ưu đãi khuyến mãi',
-    content: 'Dạ sản phẩm bên em hiện đang có chương trình trợ giá tốt nhất kèm nhiều ưu đãi quà tặng và bảo hành chính hãng ạ. Em xin phép gửi thông tin chi tiết cho mình ngay nhé ạ!',
-    category: 'Khuyến mãi',
-  },
-  {
-    id: 'qm_bao_hanh',
-    title: 'Chính sách bảo hành & đổi trả',
-    content: 'Dạ sản phẩm tại Hoàng Hà Mobile được bảo hành chính hãng 12-24 tháng và hỗ trợ lỗi 1 đổi 1 trong 30 ngày đầu nếu phát sinh lỗi phần cứng từ nhà sản xuất ạ.',
-    category: 'Bảo hành',
-  },
-  {
-    id: 'qm_hen_lien_he',
-    title: 'Hẹn liên hệ lại',
-    content: 'Dạ em đã ghi nhận thông tin của anh/chị và chuyển chuyên viên phụ trách. Nhân viên sẽ liên hệ lại hỗ trợ mình trong thời gian sớm nhất ạ!',
-    category: 'Chăm sóc',
-  },
-  {
-    id: 'qm_cam_on',
-    title: 'Cảm ơn khách hàng',
-    content: 'Dạ Hoàng Hà Mobile cảm ơn anh/chị đã quan tâm và tin tưởng. Nếu cần hỗ trợ thêm thông tin gì, anh/chị cứ nhắn lại cho em nhé ạ. Chúc anh/chị một ngày tốt lành!',
-    category: 'Chào hỏi',
-  },
-];
+export const DEFAULT_QUICK_MESSAGES = [];
+
+const LEGACY_MOCK_IDS = new Set([
+  'qm_tra_gop',
+  'qm_chao_hoi',
+  'qm_ton_kho',
+  'qm_xin_sdt',
+  'qm_bao_gia',
+  'qm_bao_hanh',
+  'qm_hen_lien_he',
+  'qm_cam_on',
+]);
 
 export default function QuickMessagesModal({
   isOpen,
@@ -65,18 +27,24 @@ export default function QuickMessagesModal({
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalize if array of strings or array of objects
-          return parsed.map((item, idx) => {
-            if (typeof item === 'string') {
-              return { id: `stored_${idx}`, title: item.slice(0, 30), content: item, category: 'Mẫu nhanh' };
-            }
-            return item;
-          });
+        if (Array.isArray(parsed)) {
+          // Normalize and filter out legacy hardcoded mocks
+          const valid = parsed
+            .filter(item => {
+              if (typeof item === 'string') return Boolean(item.trim());
+              return item && item.id && !LEGACY_MOCK_IDS.has(item.id);
+            })
+            .map((item, idx) => {
+              if (typeof item === 'string') {
+                return { id: `stored_${idx}`, title: item.slice(0, 30), content: item, category: 'Tùy chỉnh' };
+              }
+              return item;
+            });
+          return valid;
         }
       }
     } catch (_) {}
-    return DEFAULT_QUICK_MESSAGES;
+    return [];
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,7 +136,7 @@ export default function QuickMessagesModal({
             <i className="fa-solid fa-magnifying-glass"></i>
             <input
               type="text"
-              placeholder={copy.t('Tìm kiếm tin nhắn mẫu (trả góp, báo giá, kho hàng...)...')}
+              placeholder={copy.t('Tìm kiếm tin nhắn mẫu...')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               autoFocus
@@ -195,17 +163,18 @@ export default function QuickMessagesModal({
             <div className="quick-messages-form-row">
               <input
                 type="text"
-                placeholder={copy.t('Tiêu đề mẫu (vd: Tư vấn trả góp)')}
+                placeholder={copy.t('Tiêu đề mẫu (vd: Tư vấn khách hàng)')}
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
                 required
               />
               <select value={newCategory} onChange={e => setNewCategory(e.target.value)}>
                 <option value="Tư vấn">{copy.t('Tư vấn')}</option>
-                <option value="Khuyến mãi">{copy.t('Khuyến mãi')}</option>
-                <option value="Kho & Chi nhánh">{copy.t('Kho & Chi nhánh')}</option>
-                <option value="Bảo hành">{copy.t('Bảo hành')}</option>
                 <option value="Chào hỏi">{copy.t('Chào hỏi')}</option>
+                <option value="Thông tin">{copy.t('Thông tin')}</option>
+                <option value="Khuyến mãi">{copy.t('Khuyến mãi')}</option>
+                <option value="Bảo hành">{copy.t('Bảo hành')}</option>
+                <option value="Chăm sóc">{copy.t('Chăm sóc')}</option>
                 <option value="Tùy chỉnh">{copy.t('Tùy chỉnh')}</option>
               </select>
             </div>
@@ -228,23 +197,46 @@ export default function QuickMessagesModal({
           </form>
         )}
 
-        {/* Category Filter Chips */}
-        <div className="quick-messages-categories">
-          {categories.map(cat => (
-            <button
-              type="button"
-              key={cat}
-              className={`quick-messages-category-chip ${selectedCategory === cat ? 'active' : ''}`}
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat === 'all' ? copy.t('Tất cả') : cat}
-            </button>
-          ))}
-        </div>
+        {/* Category Filter Chips (chỉ hiện khi có ít nhất 1 category tùy chỉnh) */}
+        {categories.length > 1 && (
+          <div className="quick-messages-categories">
+            {categories.map(cat => (
+              <button
+                type="button"
+                key={cat}
+                className={`quick-messages-category-chip ${selectedCategory === cat ? 'active' : ''}`}
+                onClick={() => setSelectedCategory(cat)}
+              >
+                {cat === 'all' ? copy.t('Tất cả') : cat}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Danh sách templates */}
         <div className="quick-messages-list">
-          {filteredMessages.length === 0 ? (
+          {messages.length === 0 ? (
+            <div className="quick-messages-empty" style={{ padding: '40px 16px', textAlign: 'center' }}>
+              <i className="fa-solid fa-bolt" style={{ fontSize: '32px', color: '#0068ff', opacity: 0.8, marginBottom: '8px' }}></i>
+              <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: 600, color: 'var(--text-primary, #1e293b)' }}>
+                {copy.t('Chưa có tin nhắn mẫu nào')}
+              </h4>
+              <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary, #64748b)', maxWidth: '360px', lineHeight: 1.5 }}>
+                {copy.t('Bạn có thể tạo các tin nhắn soạn sẵn để phản hồi nhanh cho khách hàng.')}
+              </p>
+              {!isAdding && (
+                <button
+                  type="button"
+                  className="quick-messages-add-trigger"
+                  onClick={() => setIsAdding(true)}
+                  style={{ marginTop: '16px', background: '#0068ff', color: '#fff', border: 'none' }}
+                >
+                  <i className="fa-solid fa-plus"></i>
+                  <span>{copy.t('Tạo mẫu mới')}</span>
+                </button>
+              )}
+            </div>
+          ) : filteredMessages.length === 0 ? (
             <div className="quick-messages-empty">
               <i className="fa-regular fa-comment-dots"></i>
               <p>{copy.t('Không tìm thấy tin nhắn mẫu nào phù hợp.')}</p>
@@ -280,16 +272,14 @@ export default function QuickMessagesModal({
                       <span>{copy.t('Gửi ngay')}</span>
                     </button>
                   )}
-                  {item.isCustom && (
-                    <button
-                      type="button"
-                      className="quick-message-btn-delete"
-                      title={copy.t('Xóa mẫu này')}
-                      onClick={e => handleDelete(item.id, e)}
-                    >
-                      <i className="fa-solid fa-trash-can"></i>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="quick-message-btn-delete"
+                    title={copy.t('Xóa mẫu này')}
+                    onClick={e => handleDelete(item.id, e)}
+                  >
+                    <i className="fa-solid fa-trash-can"></i>
+                  </button>
                 </div>
               </div>
             ))
