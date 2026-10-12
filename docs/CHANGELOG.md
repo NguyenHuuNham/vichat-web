@@ -46,9 +46,19 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   - Frontend unittests: 468/468 tests PASS (`npm run test:frontend`).
   - Mobile vitest: 7/7 tests PASS (`npm run test src/modules/workspace/__tests__/taskService.test.ts` và `taskStore.test.ts`).
   - Vite production build: 0 error/warning (`npm run build`).
+- Commit/PR: Commits `d78fedc` (nâng cấp Workspace, gỡ 8 script deploy cũ, cập nhật .gitignore) và `4fe92b5` (cập nhật production bundle hash).
+- Triển khai Production:
+  + Tuyến kết nối: SSH jump host `ubuntu@103.74.122.206` -> server đích `ubuntu@192.168.80.20` (`chat-server`).
+  + Release: `/opt/deploy/chat/releases/vichat-web-4fe92b5-20261012-r1` (`current`), archive SHA-256 `ff115a047af19c5108a01975132e49fa238a9f72881b57433e15ff38bf06216b`.
+  + Container ChatUI: `songhong-production-chat-1` (ID `6df4e8c9c69deaf113bfc8d43fffcca93a92d14f7079472ce62cb91062215690`), healthy, restart 0.
+  + Container Chatmgt: `songhong-production-chatmgt-1` (ID `f1f953c49180846a605b34dcd3939c6155a26de815609480233e777ae684a8e5`), healthy, restart 0.
+  + Public verify: `https://chat.gonplatform.com/` (bundle `index-Bn7HDJm5.js`, CSS `index-DtKrl-hB.css`), `https://chatmgt.gonplatform.com/api/v1/auth/health` -> HTTP 200 OK.
+  + Bảo toàn tuyệt đối các container hạ tầng khác: Tinode, Chatbot Webhook, Bridge, ChatAPI, PostgreSQL, Redis.
+- Dọn dẹp Repository:
+  + Đã gỡ bỏ toàn bộ 8 file script deploy tạm/cũ (`build_apk_v1057.bat`, `deploy-group-spam-fe99308.sh`, `deploy-media-history-b4c4325.sh`, `deploy-mute-category-69a7f70.sh`, `deploy-profile-viewers-634a7d1.sh`, `deploy-tenant-header-fade376.sh`, `outputs/deploy-compact-reactions-656ca5f.sh`, `verify-group-spam-fe99308.sh`).
+  + Cập nhật `.gitignore` ngăn chặn vĩnh viễn việc vô tình commit script deploy tạm thời.
 - Rui ro con lai: Khong co da biet.
-- Viec tiep theo: San sang dong goi va trien khai production khi nguoi dung yeu cau.
-- Commit/PR: Chua tao.
+- Viec tiep theo: San sang UAT va van hanh thuc te tren toan he thong.
 
 ## 2026-10-11-11 - Chuẩn hóa giao diện tiêu đề hội thoại Zalo CRM (Đề mục 2 hàng, pill badges và bullet separators):
 
