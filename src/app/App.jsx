@@ -3742,6 +3742,13 @@ function App() {
   const mediaHistoryCacheRef = useRef(new Map());
   const mediaHistoryRequestsRef = useRef(new Map());
   const notificationOpenHandlerRef = useRef(null);
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
+  const draftDebounceTimerRef = useRef(null);
+  const chatScrollRafRef = useRef(null);
+  const messageMenuRef = useRef(messageMenu);
+  messageMenuRef.current = messageMenu;
+  const lastDirectBlockSyncAtRef = useRef(0);
   const contactsSyncTimerRef = useRef(null);
   const contactsSyncRequestRef = useRef(0);
   const directorySearchRequestRef = useRef(0);
@@ -6218,6 +6225,16 @@ function App() {
     }
   }, [chatMode, updateMessageScrollState, viewerId]);
 
+  const handleChatMessagesScroll = useCallback(() => {
+    if (chatScrollRafRef.current) return;
+    chatScrollRafRef.current = window.requestAnimationFrame(() => {
+      chatScrollRafRef.current = null;
+      updateMessageScrollState();
+      if (messageMenuRef.current) setMessageMenu(null);
+      if (chatMessagesRef.current?.scrollTop <= 72) void loadEarlierHistory();
+    });
+  }, [updateMessageScrollState, loadEarlierHistory]);
+
   const interruptConversationNavigation = () => {
     conversationNavigationRef.current += 1;
   };
@@ -6317,7 +6334,15 @@ function App() {
     let cancelled = false;
     let syncing = false;
     const syncDirectBlockStates = async () => {
-      if (cancelled || syncing || accountSessionRef.current !== accountSession) return;
+      if (
+        cancelled
+        || syncing
+        || accountSessionRef.current !== accountSession
+        || (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+      ) return;
+      const now = Date.now();
+      if (now - lastDirectBlockSyncAtRef.current < 15000) return;
+      lastDirectBlockSyncAtRef.current = now;
       syncing = true;
       try {
         const states = await chatManagementService.listDirectBlockStates();
@@ -6359,9 +6384,14 @@ function App() {
     };
     void syncDirectBlockStates();
     const timer = window.setInterval(syncDirectBlockStates, 3000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void syncDirectBlockStates();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [isLoggedIn, managementViewerId]);
 
@@ -7825,7 +7855,11 @@ function App() {
     openingConversationRef.current = String(id);
     setCurrentChatId(id);
     if (shouldScrollToLatestOnOpen) queueConversationLatestScroll(id, navigation);
-    setInputText(drafts[id] || '');
+    if (draftDebounceTimerRef.current) {
+      window.clearTimeout(draftDebounceTimerRef.current);
+      draftDebounceTimerRef.current = null;
+    }
+    setInputText(draftsRef.current[id] || drafts[id] || '');
     setIsMobileChatActive(true);
     setChatError('');
     let pendingUnreadBoundary = null;
@@ -8325,7 +8359,7 @@ function App() {
     const validateVisibleSession = () => {
       if (document.visibilityState !== 'hidden') validateSession();
     };
-    const timer = window.setInterval(validateSession, 5000);
+    const timer = window.setInterval(validateSession, 25000);
     window.addEventListener('focus', validateSession);
     document.addEventListener('visibilitychange', validateVisibleSession);
     return () => {
@@ -8883,7 +8917,7 @@ function App() {
     };
 
     void syncManagementDirectory();
-    const timer = window.setInterval(syncManagementDirectory, 5000);
+    const timer = window.setInterval(syncManagementDirectory, 25000);
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void syncManagementDirectory();
     };
@@ -12852,12 +12886,41 @@ function App() {
       });
       return true;
     }
-    setDrafts(prev => {
-      const next = { ...prev };
-      if (nextValue) next[currentChatId] = nextValue;
-      else delete next[currentChatId];
-      return next;
-    });
+    const prevDraft = draftsRef.current[currentChatId] || '';
+    const hadDraft = Boolean(prevDraft.trim());
+    const hasNextDraft = Boolean(nextValue.trim());
+    if (hadDraft !== hasNextDraft) {
+      if (draftDebounceTimerRef.current) {
+        window.clearTimeout(draftDebounceTimerRef.current);
+        draftDebounceTimerRef.current = null;
+      }
+      setDrafts(prev => {
+        const next = { ...prev };
+        if (nextValue) next[currentChatId] = nextValue;
+        else delete next[currentChatId];
+        draftsRef.current = next;
+        return next;
+      });
+    } else {
+      draftsRef.current = {
+        ...draftsRef.current,
+        [currentChatId]: nextValue,
+      };
+      if (draftDebounceTimerRef.current) {
+        window.clearTimeout(draftDebounceTimerRef.current);
+      }
+      draftDebounceTimerRef.current = window.setTimeout(() => {
+        draftDebounceTimerRef.current = null;
+        setDrafts(prev => {
+          if (prev[currentChatId] === nextValue) return prev;
+          const next = { ...prev };
+          if (nextValue) next[currentChatId] = nextValue;
+          else delete next[currentChatId];
+          draftsRef.current = next;
+          return next;
+        });
+      }, 200);
+    }
     setMessageMentions(previous => {
       const currentMentions = previous[currentChatId] || [];
       const nextMentions = currentMentions.filter(mention => mentionTokenExists(nextValue, mention.token));
@@ -13751,11 +13814,16 @@ function App() {
       setChatError(err?.message || 'Không thể lưu lịch sử tin nhắn nhóm.');
     }
 
+    if (draftDebounceTimerRef.current) {
+      window.clearTimeout(draftDebounceTimerRef.current);
+      draftDebounceTimerRef.current = null;
+    }
     setInputText("");
     setReplyingTo(null);
     setDrafts(prev => {
       const next = { ...prev };
       delete next[currentChatId];
+      draftsRef.current = next;
       return next;
     });
     setMessageMentions(prev => {
@@ -15971,11 +16039,7 @@ function App() {
             onWheel={interruptConversationNavigation}
             onTouchMove={interruptConversationNavigation}
             onPointerDown={interruptConversationNavigation}
-            onScroll={() => {
-              updateMessageScrollState();
-              if (messageMenu) setMessageMenu(null);
-              if (chatMessagesRef.current?.scrollTop <= 72) void loadEarlierHistory();
-            }}
+            onScroll={handleChatMessagesScroll}
           >
           <div className="chat-messages-content">
           {!hasDatedMessages && (

@@ -577,6 +577,7 @@ select {
     cursor: pointer;
     margin-bottom: 1px;
     transition: var(--transition-fast);
+    contain: layout style;
 }
 
 .conversation-item:hover {
@@ -1003,6 +1004,8 @@ select {
     padding: 16px;
     display: block;
     overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    will-change: scroll-position;
 }
 
 .chat-messages.has-conversation-background {
@@ -1245,6 +1248,7 @@ select {
     gap: 12px;
     max-width: 75%;
     animation: fadeIn 0.25s ease;
+    contain: layout style;
 }
 
 @keyframes fadeIn {

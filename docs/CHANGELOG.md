@@ -6,7 +6,31 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
 
 ## Lich su thay doi
 
-## 2026-10-12-07 - Loại bỏ hoàn toàn tính năng Tin nhắn nhanh (Quick Messages) trên Web và Mobile:
+## 2026-10-12-08 - Tối ưu hóa hiệu năng Web: Giảm độ trễ gõ phím (input latency), giảm tải CPU và tối ưu render danh sách hội thoại:
+
+- Thoi gian: 2026-10-12 16:30 (Asia/Saigon)
+- Loai: Performance Optimization | UX Polish | Stability
+- Trang thai: Hoan tat 100%, 470/470 tests Web frontend PASS, linter 0 errors, build production Web PASS.
+- Muc tieu: Khắc phục triệt để hiện tượng giật lag, độ trễ khi gõ tin nhắn, cuộn tin nhắn và tải CPU không cần thiết trên giao diện Web ViChat; tối ưu triệt để theo kiến trúc React:
+  1. Giảm thiểu re-render không cần thiết khi người dùng đang nhập văn bản vào ô soạn thảo.
+  2. Throttle cuộn tin nhắn bằng `requestAnimationFrame` để cuộn mượt mà 60fps, không gây tắc nghẽn main thread.
+  3. Giãn chu kỳ polling ngầm khi tab đang mở và dừng polling khi tab ở trạng thái ẩn (`document.hidden`).
+  4. Bật CSS layout containment (`contain: layout style`) và GPU acceleration (`will-change: scroll-position`) cho danh sách tin nhắn và danh sách hội thoại.
+- Pham vi thay doi:
+  + `src/app/App.jsx`:
+    - Thêm `draftsRef` và cơ chế debounce 200ms cho việc cập nhật `setDrafts` trong khi vẫn giữ `inputText` phản hồi tức thì 0ms (zero-latency typing).
+    - Đồng bộ `draftsRef` khi chuyển đổi hội thoại và xóa draft ngay lập tức khi gửi tin nhắn hoặc nhấn gửi.
+    - Chuyển `onScroll` của container tin nhắn sang `handleChatMessagesScroll` sử dụng `requestAnimationFrame` throttle, tránh gọi `updateMessageScrollState()` liên tục trên từng pixel cuộn.
+    - Tối ưu `syncDirectBlockStates`: kiểm tra `document.visibilityState === 'hidden'` để bỏ qua khi tab ẩn, throttle tối thiểu 15s giữa các lần gọi API, và lắng nghe sự kiện `visibilitychange` để đồng bộ ngay khi tab hiển thị trở lại.
+    - Giãn interval của `validateSession` và `syncManagementDirectory` từ 5s lên 25s; đồng thời giữ nguyên bộ lắng nghe sự kiện `focus` và `visibilitychange` đảm bảo trạng thái luôn cập nhật tức thời khi người dùng chuyển tab.
+  + `src/styles/index.css`:
+    - Thêm `contain: layout style` cho `.conversation-item` và `.message-row` giúp trình duyệt cô lập phạm vi recalculate style và reflow chỉ trong từng item thay vì toàn bộ cây DOM.
+    - Thêm `-webkit-overflow-scrolling: touch` và `will-change: scroll-position` cho `.chat-messages` để tăng tốc độ cuộn mượt bằng GPU.
+- Lenh kiem thu:
+  + `npm run lint`: PASS (0 errors).
+  + `npm run test:frontend`: PASS 470/470 tests.
+  + `npm run build:production`: PASS (built in 1.11s).
+
 
 - Thoi gian: 2026-10-12 15:58 (Asia/Saigon)
 - Loai: Feature Removal | Code Cleanup | UI/UX Simplification
