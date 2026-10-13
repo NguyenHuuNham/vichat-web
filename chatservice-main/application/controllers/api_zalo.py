@@ -1316,6 +1316,28 @@ async def zalo_update_workflow(request):
     return json_response({"error": "Conversation not found"}, status=404)
 
 
+
+async def _notify_chatbot_takeover(oa_id: str, user_id: str, action: str, tenant_id: str = ""):
+    """Notify external Chatbot engine about human takeover or resume."""
+    chatbot_base = os.getenv("CHATBOT_BASE_URL", "http://chatbot.gonplatform.com").rstrip("/")
+    endpoint = "/api/v1/zalo/bot/pause" if action == "takeover" else "/api/v1/zalo/bot/resume"
+    url = f"{chatbot_base}{endpoint}"
+    payload = {
+        "oa_id": str(oa_id).strip(),
+        "user_id": str(user_id).strip(),
+        "sender_id": str(user_id).strip(),
+        "tenant_id": str(tenant_id).strip(),
+    }
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as session:
+            async with session.post(url, json=payload) as resp:
+                data = await resp.json()
+                logger.info("Notified Chatbot of bot %s for user %s: status=%s resp=%s", action, user_id, resp.status, data)
+    except Exception as exc:
+        logger.warning("Failed to notify Chatbot of %s for user %s: %s", action, user_id, exc)
+
+
 @app.route("/api/v1/zalo/takeover", methods=["POST"])
 async def zalo_toggle_takeover(request):
     """Allows ViChat human agents to explicitly take over or release the bot with tenant check."""
@@ -1344,6 +1366,10 @@ async def zalo_toggle_takeover(request):
     is_active = (action == "takeover")
     _set_takeover_active(oa_id, user_id, active=is_active)
     _set_handover_pending(oa_id, user_id, active=False)
+    try:
+        await _notify_chatbot_takeover(oa_id, user_id, action, tenant_id=tenant_id)
+    except Exception as exc:
+        logger.warning("Error calling _notify_chatbot_takeover: %s", exc)
 
     conversation_id = "zalo:{}:{}".format(oa_id or "default", user_id)
     if redisdb is not None:
