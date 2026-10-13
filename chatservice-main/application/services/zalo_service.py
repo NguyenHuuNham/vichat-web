@@ -349,13 +349,18 @@ class ZaloService(object):
                     if error_code == 0:
                         inner = data.get("data", {})
                         sent_msg_id = inner.get("message_id")
-                        if sent_msg_id:
-                            try:
-                                from application.database import redisdb
-                                if redisdb is not None:
-                                    redisdb.setex("zalo:dedupe:{}".format(sent_msg_id), 120, "1")
-                            except Exception:
-                                pass
+                        try:
+                            from application.database import redisdb
+                            if redisdb is not None:
+                                if sent_msg_id:
+                                    redisdb.setex("zalo:dedupe:{}".format(sent_msg_id), 300, "1")
+                                    redisdb.setex("zalo:sent_by_vichat:{}".format(sent_msg_id), 300, "1")
+                                if message_text:
+                                    import hashlib
+                                    h = hashlib.md5(str(message_text).strip().encode("utf-8")).hexdigest()
+                                    redisdb.setex("zalo:sent_by_vichat_text:{}:{}:{}".format(oa_id or "default", str(user_id).strip(), h), 180, "1")
+                        except Exception as _dedup_err:
+                            logger.warning("Failed to record ViChat sent dedup keys: %s", _dedup_err)
                         logger.info("Sent Zalo CS message to %s, msg_id=%s", user_id, sent_msg_id)
                         return {
                             "success": True,

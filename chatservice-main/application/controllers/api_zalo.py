@@ -126,6 +126,23 @@ def _extract_request_tenant(request) -> str:
     return ""
 
 
+def _is_sent_by_vichat(oa_id: str, customer_id: str, msg_id: str, text: str) -> bool:
+    """Check if message was already dispatched by ViChat staff to prevent dual-publishing to Tinode."""
+    if redisdb is None:
+        return False
+    try:
+        if msg_id and redisdb.exists("zalo:sent_by_vichat:{}".format(msg_id)):
+            return True
+        if text and customer_id:
+            import hashlib
+            h = hashlib.md5(str(text).strip().encode("utf-8")).hexdigest()
+            if redisdb.exists("zalo:sent_by_vichat_text:{}:{}:{}".format(oa_id or "default", str(customer_id).strip(), h)):
+                return True
+    except Exception as exc:
+        logger.warning("Redis check _is_sent_by_vichat failed: %s", exc)
+    return False
+
+
 def _is_duplicate_message(msg_id: str) -> bool:
     """Prevent double replies if Zalo retries the webhook delivery."""
     if not msg_id:
@@ -475,6 +492,11 @@ async def zalo_webhook(request):
         if msg_id and _is_duplicate_message(msg_id):
             logger.info("Ignored duplicate Zalo OA message msg_id=%s", msg_id)
             return json_response({"status": "duplicate_skipped"}, status=200)
+
+        # Do not dual-publish to Tinode if message was already sent by ViChat staff
+        if _is_sent_by_vichat(oa_id, customer_id, msg_id, message_text):
+            logger.info("Ignored outgoing Zalo OA webhook already sent by ViChat to %s: %s", customer_id, msg_id or message_text[:20])
+            return json_response({"status": "sent_by_vichat_skipped"}, status=200)
 
         conversation_id = "zalo:{}:{}".format(oa_id or "default", customer_id)
         msg_type = "text"
