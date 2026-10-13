@@ -348,10 +348,18 @@ class ZaloService(object):
                     error_code = data.get("error", -1)
                     if error_code == 0:
                         inner = data.get("data", {})
-                        logger.info("Sent Zalo CS message to %s, msg_id=%s", user_id, inner.get("message_id"))
+                        sent_msg_id = inner.get("message_id")
+                        if sent_msg_id:
+                            try:
+                                from application.database import redisdb
+                                if redisdb is not None:
+                                    redisdb.setex("zalo:dedupe:{}".format(sent_msg_id), 120, "1")
+                            except Exception:
+                                pass
+                        logger.info("Sent Zalo CS message to %s, msg_id=%s", user_id, sent_msg_id)
                         return {
                             "success": True,
-                            "msg_id": inner.get("message_id"),
+                            "msg_id": sent_msg_id,
                             "error_code": 0,
                             "raw": data,
                         }
