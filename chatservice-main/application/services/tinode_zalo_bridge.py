@@ -94,59 +94,77 @@ class TinodeBridgePublisher:
             self._lock = asyncio.Lock()
         return self._lock
 
-    async def get_ws(self, app):
-        async with self.get_lock():
-            if self.ws is not None and not self.ws.closed:
-                return self.ws
+    def _is_ws_valid(self):
+        if self.ws is None or self.ws.closed:
+            return False
+        try:
+            writer = getattr(self.ws, '_writer', None)
+            if writer:
+                transport = getattr(writer, 'transport', None)
+                if transport and transport.is_closing():
+                    return False
+        except Exception:
+            pass
+        return True
+
+    async def _cleanup(self):
+        if self.ws:
             try:
-                if self.session and not self.session.closed:
-                    await self.session.close()
+                await self.ws.close()
             except Exception:
                 pass
-            self.session, self.ws, self.token = await _get_tinode_client_ws(app)
-            self.subscribed_topics.clear()
+            self.ws = None
+        if self.session:
+            try:
+                await self.session.close()
+            except Exception:
+                pass
+            self.session = None
+        self.subscribed_topics.clear()
+
+    async def _ensure_connected(self, app):
+        if self._is_ws_valid():
             return self.ws
+        await self._cleanup()
+        self.session, self.ws, self.token = await _get_tinode_client_ws(app)
+        self.subscribed_topics.clear()
+        return self.ws
 
     async def publish(self, app, topic: str, content: str) -> bool:
         if not topic or not str(topic).startswith("grp") or not content:
             return False
 
-        for attempt in range(2):
-            try:
-                ws = await self.get_ws(app)
-                # Subscribe once per persistent connection
-                if topic not in self.subscribed_topics:
-                    sub_id = f"sub_{int(time.time()*1000)}"
-                    await ws.send_json({"sub": {"id": sub_id, "topic": topic}})
-                    for _ in range(5):
-                        p = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
-                        if p.get("ctrl") and p["ctrl"].get("id") == sub_id:
-                            break
-                    self.subscribed_topics.add(topic)
+        async with self.get_lock():
+            for attempt in range(2):
+                try:
+                    ws = await self._ensure_connected(app)
+                    # Subscribe once per persistent connection
+                    if topic not in self.subscribed_topics:
+                        sub_id = f"sub_{int(time.time()*1000)}"
+                        await ws.send_json({"sub": {"id": sub_id, "topic": topic}})
+                        for _ in range(5):
+                            p = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
+                            if p.get("ctrl") and p["ctrl"].get("id") == sub_id:
+                                break
+                        self.subscribed_topics.add(topic)
 
-                req_id = f"pub_{int(time.time()*1000)}"
-                await ws.send_json({"pub": {"id": req_id, "topic": topic, "content": content}})
-                for _ in range(5):
-                    pkt = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
-                    ctrl = pkt.get("ctrl") or {}
-                    if ctrl.get("id") == req_id:
-                        seq = (ctrl.get("params") or {}).get("seq")
-                        logger.info("Persisted message to Tinode topic %s (seq=%s)", topic, seq)
-                        return True
-                return True
-            except Exception as exc:
-                logger.warning("Tinode publish attempt %d failed for topic %s: %s", attempt, topic, exc)
-                async with self.get_lock():
-                    if self.ws:
-                        try:
-                            await self.ws.close()
-                        except Exception:
-                            pass
-                        self.ws = None
-                if attempt == 1:
-                    logger.error("Failed to publish message to Tinode topic %s: %s", topic, exc)
-                    return False
-        return False
+                    req_id = f"pub_{int(time.time()*1000)}"
+                    await ws.send_json({"pub": {"id": req_id, "topic": topic, "content": content}})
+                    for _ in range(5):
+                        pkt = await asyncio.wait_for(ws.receive_json(), timeout=3.0)
+                        ctrl = pkt.get("ctrl") or {}
+                        if ctrl.get("id") == req_id:
+                            seq = (ctrl.get("params") or {}).get("seq")
+                            logger.info("Persisted message to Tinode topic %s (seq=%s)", topic, seq)
+                            return True
+                    return True
+                except Exception as exc:
+                    logger.warning("Tinode publish attempt %d failed for topic %s: %s", attempt, topic, exc)
+                    await self._cleanup()
+                    if attempt == 1:
+                        logger.error("Failed to publish message to Tinode topic %s: %s", topic, exc)
+                        return False
+            return False
 
 
 _tinode_publisher = TinodeBridgePublisher()
@@ -388,7 +406,7 @@ def _sync_subscribe_staff_to_topic(topic: str, tenant_id: str):
             SELECT NOW(), NOW(), a.userid, %s, 0, t.seqid, t.seqid, 'JRWPAS', 'JRWPAS'
             FROM topics t
             CROSS JOIN (
-                SELECT DISTINCT userid FROM auth WHERE uname LIKE 'basic:upgo_%' AND uname != 'basic:upgo_chatbot'
+                SELECT DISTINCT userid FROM auth WHERE SUBSTRING(uname, 1, 11) = 'basic:upgo_' AND uname != 'basic:upgo_chatbot'
             ) a
             WHERE t.name = %s
             ON CONFLICT (topic, userid) DO UPDATE

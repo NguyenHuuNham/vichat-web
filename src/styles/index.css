@@ -115,14 +115,9 @@ select {
     background-color: var(--bg-white);
 }
 
-.external-chat-mode .primary-nav .nav-item:has(.fa-address-book),
 .external-chat-mode .primary-nav .nav-item:has(.fa-users),
 .external-chat-mode .primary-nav .nav-item:has(.fa-folder-open),
-.external-chat-mode .primary-nav .nav-item:has(.fa-bell),
-.external-chat-mode .sidebar-secondary .btn-action,
-.external-chat-mode .sidebar-secondary .search-box,
-.external-chat-mode .chat-header-actions,
-.external-chat-mode .sidebar-detail {
+.external-chat-mode .primary-nav .nav-item:has(.fa-bell) {
     display: none;
 }
 

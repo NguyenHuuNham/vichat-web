@@ -1861,6 +1861,15 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
       const payloadKey = messagePayloadKey(message);
       index = merged.findIndex(candidate => candidate.pending && messagePayloadKey(candidate) === payloadKey);
     }
+    // Reconcile pending optimistic outgoing message with its server copy by text content
+    if (index === undefined && message.sender === 'outgoing' && !message.isBot && message.text && !message.recalled) {
+      index = merged.findIndex(candidate => {
+        if (!candidate.pending && !String(candidate.id || '').startsWith('temp_') && !String(candidate.id || '').startsWith('local_')) {
+          return false;
+        }
+        return candidate.sender === 'outgoing' && !candidate.isBot && candidate.text === message.text;
+      });
+    }
 
     if (index !== undefined && index >= 0) {
       const previousKey = merged[index]?.id;
@@ -9024,35 +9033,82 @@ function App() {
           let latestTimestamp = Date.now();
           let latestStatus = existingRoom?.status || 'bot_resolved';
           let latestNeedsHuman = existingRoom?.needs_human;
+          let latestTakeoverActive = existingRoom?.takeover_active;
           let newIncomingCount = 0;
 
           for (const ev of convEvents) {
             const rawMsg = ev.customer_message || ev.message || ev.agent_message;
-            const isAgent = ev.type === 'agent_message' || ev.event === 'agent_message' || Boolean(ev.agent_message);
-            const eventTimestamp = ev.timestamp ? Number(ev.timestamp) * 1000 : Date.now();
+            const isBot = Boolean(ev.is_bot || ev.isBot || ev.from_bot_service || ev.from_chatbot);
+            const isAgent = !isBot && (ev.type === 'agent_message' || ev.event === 'agent_message' || Boolean(ev.agent_message));
+            const isOutgoing = isBot || isAgent;
+            const rawEventTs = ev.timestamp
+              ? (Number(ev.timestamp) > 1e11 ? Number(ev.timestamp) : Number(ev.timestamp) * 1000)
+              : Date.now();
+            // Monotonic timestamp protection: In an active conversation, incoming live events
+            // should not have a display timestamp earlier than the latest known message in the room
+            const existingMsgs = existingRoom?.messages || [];
+            const lastKnownMsg = existingMsgs.length > 0 ? existingMsgs[existingMsgs.length - 1] : null;
+            const lastKnownTs = lastKnownMsg ? messageTimestamp(lastKnownMsg) : 0;
+            const eventTimestamp = (isCurrentChat && lastKnownTs > 0)
+              ? Math.max(rawEventTs, lastKnownTs + 1)
+              : rawEventTs;
             latestTimestamp = Math.max(latestTimestamp, eventTimestamp);
 
             if (ev.status) latestStatus = ev.status;
             if (typeof ev.needs_human === 'boolean') latestNeedsHuman = ev.needs_human;
+            if (ev.event === 'takeover_changed' || typeof ev.takeover_active === 'boolean') {
+              if (typeof ev.takeover_active === 'boolean') {
+                latestNeedsHuman = ev.takeover_active;
+                latestStatus = ev.takeover_active ? 'agent_handling' : 'bot_resolved';
+                latestTakeoverActive = ev.takeover_active;
+              }
+            }
 
             if (rawMsg || ev.image || ev.file) {
               const msgType = ev.type && ev.type !== 'agent_message' ? ev.type : (ev.image ? 'image' : (ev.file ? 'file' : 'text'));
               latestMsgText = String(rawMsg || (ev.image ? '[Hình ảnh]' : (ev.file ? '[Tệp đính kèm]' : '')));
+
+              // Dedup: Bỏ qua nếu message_id đã tồn tại trong danh sách tin nhắn của phòng
+              if (ev.message_id && (
+                (existingRoom?.messages || []).some(m => m.id === ev.message_id) ||
+                allNewMessages.some(m => m.id === ev.message_id)
+              )) {
+                continue;
+              }
+
+              // Dedup: Tránh render trùng hoặc tin dội lại cho tin nhân viên vừa gửi trong vòng 30s
+              if (isAgent && !isBot && latestMsgText) {
+                const alreadyExists = (existingRoom?.messages || []).some(m =>
+                  m.sender === 'outgoing' &&
+                  !m.isBot &&
+                  m.text === latestMsgText &&
+                  Math.abs((messageTimestamp(m) || 0) - eventTimestamp) < 30000
+                ) || allNewMessages.some(m =>
+                  m.sender === 'outgoing' &&
+                  !m.isBot &&
+                  m.text === latestMsgText
+                );
+                if (alreadyExists) {
+                  continue;
+                }
+              }
+
               const msgObj = {
                 id: ev.message_id || `zalo_${eventTimestamp}_${Math.random().toString(36).slice(2, 6)}`,
                 type: msgType,
                 text: latestMsgText,
-                sender: isAgent ? 'outgoing' : 'incoming',
-                senderId: String(ev.sender_id || (isAgent ? 'agent' : 'customer')),
-                senderName: String(ev.sender_name || ev.agent_name || (isAgent ? 'Bạn' : 'Khách Zalo')),
+                sender: isOutgoing ? 'outgoing' : 'incoming',
+                senderId: isBot ? 'bot' : String(ev.sender_id || (isAgent ? 'agent' : 'customer')),
+                senderName: isBot ? 'Chatbot AI' : String(ev.sender_name || ev.agent_name || (isAgent ? 'Bạn' : 'Khách Zalo')),
                 avatar: ev.avatar || '',
+                isBot: isBot,
                 createdAt: new Date(eventTimestamp).toISOString(),
                 time: new Date(eventTimestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
               };
               if (ev.image) msgObj.image = ev.image;
               if (ev.file) msgObj.file = ev.file;
               allNewMessages.push(msgObj);
-              if (!isAgent) newIncomingCount += 1;
+              if (!isOutgoing) newIncomingCount += 1;
             }
 
             if (ev.bot_reply) {
@@ -9098,6 +9154,7 @@ function App() {
             updatedAt: new Date(latestTimestamp).toISOString(),
             status: latestStatus,
             needs_human: typeof latestNeedsHuman === 'boolean' ? latestNeedsHuman : existingRoom?.needs_human,
+            takeover_active: typeof latestTakeoverActive === 'boolean' ? latestTakeoverActive : existingRoom?.takeover_active,
             badge: isCurrentChat ? 0 : ((existingRoom?.badge || 0) + (isCurrentChat ? 0 : newIncomingCount)),
           };
 
@@ -13885,7 +13942,15 @@ function App() {
             [room.id]: {
               ...previous[room.id],
               messages: roomMessages(previous[room.id]).map(message => message.id === newMsg.id
-                ? { ...message, pending: false, failed: false, message_id: sendResult.message_id }
+                ? {
+                    ...message,
+                    pending: false,
+                    failed: false,
+                    id: sendResult?.message_id || message.id,
+                    message_id: sendResult?.message_id,
+                    createdAt: sendResult?.createdAt || message.createdAt,
+                    timestamp: sendResult?.timestamp || message.timestamp,
+                  }
                 : message),
             },
           }));
@@ -15774,6 +15839,36 @@ function App() {
               </ConversationErrorBoundary>
             );
           })}
+          {filteredChatIds.length === 0 && conversationListTab === 'groups' && (
+            <div className="empty-group-action" style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-secondary)' }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(0, 0, 0, 0.04)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <i className="fa-solid fa-users" style={{ fontSize: 20, color: 'var(--vichat-primary, #f4511e)' }} aria-hidden="true"></i>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>{appCopy.t('Chưa có nhóm trò chuyện nào.')}</p>
+              <button
+                type="button"
+                className="btn-action"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 16px',
+                  borderRadius: 20,
+                  background: 'var(--vichat-primary, #f4511e)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  boxShadow: '0 2px 8px rgba(244, 81, 30, 0.25)',
+                }}
+                onClick={() => setIsCreateGroupOpen(true)}
+              >
+                <i className="fa-solid fa-plus" aria-hidden="true"></i>
+                <span>{appCopy.t('Tạo nhóm mới')}</span>
+              </button>
+            </div>
+          )}
         </div>
         {conversationHasMore && <button type="button" className="conversation-load-more" onClick={loadMoreManagementConversations} disabled={conversationLoadingMore}>
           <i className={`fa-solid ${conversationLoadingMore ? 'fa-spinner fa-spin' : 'fa-chevron-down'}`} aria-hidden="true"></i>

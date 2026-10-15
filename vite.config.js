@@ -51,7 +51,8 @@ export default defineConfig(({ mode }) => {
   }
   const managementProxy = {
     '/chatmgt-api': {
-      target: 'http://127.0.0.1:8093',
+      target: env.VITE_CHATMGT_PROXY_TARGET || 'https://chatmgt.gonplatform.com',
+      secure: false,
       changeOrigin: true,
       rewrite: path => path.replace(/^\/chatmgt-api/, ''),
     },

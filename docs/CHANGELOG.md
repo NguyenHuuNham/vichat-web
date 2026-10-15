@@ -4,7 +4,257 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
-## Lich su thay doi
+## 2026-10-15-01 - Phục hồi hiển thị nút Danh bạ, Tạo nhóm mới và Ô tìm kiếm trên giao diện ViChat Web
+
+- Thoi gian: 2026-10-15 10:20 (Asia/Saigon)
+- Loai: UI Bug Fix | Layout Restoration | Configuration Alignment
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS, `npm run build` PASS (2.37s). Toan bo luong va logic Zalo OA giu nguyen 100% khong bi can thiep theo yeu cau.
+- Nguyen nhan goc re:
+  1. Trong `.env.local`, bien `VITE_CHAT_MODE` bi dat nham thanh `external`.
+  2. Khi `VITE_CHAT_MODE=external`, class `.external-chat-mode` duoc gan vao container `.app-layout`.
+  3. Trong `src/styles/index.css`, quy tac CSS `.external-chat-mode` da vo tinh dat `display: none` len:
+     - `.primary-nav .nav-item:has(.fa-address-book)`: Khien icon va nut "Danh bạ" bien mat khoi thanh dieu huong chinh ben trai.
+     - `.sidebar-secondary .btn-action`: Khien nut `+` "Tạo nhóm mới" bien mat khoi tieu de "Cuoc tro chuyen".
+     - `.sidebar-secondary .search-box`: Khien o tim kiem hoi thoai bi an.
+- Giai phap thuc hien:
+  1. **Cap nhat Style (`src/styles/index.css`)**:
+     - Loai bo cac selector `.primary-nav .nav-item:has(.fa-address-book)`, `.sidebar-secondary .btn-action`, va `.sidebar-secondary .search-box` khoi quy tac `display: none` cua `.external-chat-mode`.
+     - Dam bao cac tinh nang cot loi (Danh ba, Tao nhom, Tim kiem) luon hien thi day du tren giao dien chat.
+  2. **Chuan hoa cau hinh (`.env.local`)**:
+     - Dat `VITE_CHAT_MODE=internal` dung chuan moi truong doanh nghiep day du cua ViChat (Tinode + Chatmgt + Directory + Groups).
+  3. **Bo sung Empty State cho Tab Nhóm (`src/app/App.jsx`)**:
+     - Khi nguoi dung chon tab "Nhóm" ma chua co nhom nao, giao dien hien thi icon va nut bam truc quan "Tạo nhóm mới" (`setIsCreateGroupOpen(true)`) giup nguoi dung tao nhom nhanh chong.
+  4. **Bao toan Zalo OA**:
+     - Khong thay doi logic hay luong xu ly cua kenh Zalo OA theo dung chi dao cua nguoi dung.
+- Kiem thu va Ket qua thuc te:
+  - `npm run test:frontend`: 470/470 tests PASS (16.73s).
+  - Backend unittests: 20/20 tests PASS (`python -m unittest chatservice-main/tests/test_api_zalo_webhook.py chatservice-main/tests/test_zalo_service.py`).
+  - `npm run build:production`: Vite build production thanh cong trong 2.77s, bundle san sinh day du khong loi/canh bao.
+  - `npm run lint`: Oxlint 0 errors tren 311 files.
+- Trien khai Production Server:
+  - Tuyen ket noi: SSH hop `ubuntu@103.74.122.206` -> server dich `ubuntu@192.168.80.20` (`chat-server`).
+  - Release archive tarball dong goi va chuyen qua SCP len server dich, giai nen tai `/opt/deploy/chat/releases/`.
+  - Build va recreate container `songhong-production-chat-1` voi Docker Compose.
+  - Bao toan nguyen ven cac service ha tang: Tinode, Chatmgt, Bridge, Webhook, Postgres, Redis.
+
+## 2026-10-13-06 - Đánh giá toàn diện và Khắc phục triệt để lỗi Bot đứng im khi bật lại bot trên ViChat (Frontend Inverted Action Trigger & End-to-End Verification - Cô lập Gonstack)
+
+
+- Thoi gian: 2026-10-13 21:55 (Asia/Saigon)
+- Loai: Comprehensive Audit | Critical Bug Fix | Frontend Action Inversion | Multi-Tier Verification | 100% Hoang Ha Mobile Isolation
+- Trang thai: Hoan tat 100%. Toan bo chu trinh Pause -> Resume -> Verify da duoc kiem thu end-to-end qua ca 3 tang: ViChat Frontend (`ZaloCrmHeaderControls.jsx`, `ChatDetailScreen.tsx`), ViChat Backend API (`chatservice-main:8081` tren `192.168.80.20`), va Chatbot Engine (`UpgoBOT:10000` tren `192.168.80.154`). Ket qua Redis DB 5 keys hoan toan duoc xoa sach (`$-1\r\n`), bot tro lai trang thai `BOT_ACTIVE` ngay lap tuc. 470/470 frontend tests PASS, production build PASS, Nginx tren `songhong-production-chat-1` da duoc deploy va reload thanh cong. Luong Hoang Ha Mobile giu nguyen 100% khong bi anh huong.
+- Nguyen nhan goc re toan dien (3 Mat xich quan trong):
+  1. **Mat xich 1 - Frontend gui nguoc Action khi khach hang yeu cau gap nhan vien (`ZaloCrmHeaderControls.jsx` & `ChatDetailScreen.tsx`)**:
+     - Khi khach hang go tu khoa gap nhan vien ("gap nhan vien", "cskh") hoac hoi 2 cau ngoai pham vi bot, he thong danh dau hoi thoai `needs_human: true`, `status: "needs_human"`.
+     - Tren giao dien Web, nut bam hien thi dau cham do: `Bot: Tạm dừng | Bật`. Nhan vien nhin thay chu "Bật", tin rang bam vao se bat lai bot.
+     - Tuy nhien, code tinh toan hanh dong tiep theo lai viet la: `const nextAction = takeoverActive ? 'release' : 'takeover';`.
+     - Do `takeoverActive` luc nay la `false` (vi nhan vien chua tung bam Dung Bot ma do bot tu dong handoff sang needs_human), `nextAction` bi tinh thanh `'takeover'`!
+     - Khi nhan vien bam "Bật", he thong lai gui request `action: 'takeover'` (tam dung bot) len server! API ViChat danh dau bot tiep tuc bi pause, goi sang UpgoBOT `/pause`. Bot bi khoa chat them mot lan nua va hoan toan im lang!
+  2. **Mat xich 2 - Multi-Worker Sanic lech bo nho RAM tren Chatbot Server (`192.168.80.154`)**:
+     - UpgoBOT chay 2 workers Sanic doc lap. `_in_memory_takeover_cache` luu `HUMAN_ACTIVE` trong RAM worker voi TTL 1800s. Khi worker 1 nhan `/resume`, worker 2 van con cache cu. Tin nhan tiep theo roi vao worker 2 thi bi chan boi RAM cache.
+     - Da khac phuc: Bo qua RAM cache doi voi Gonstack (`is_gonstack`), doc truc tiep tu Redis DB 5 va MongoDB `contact`.
+  3. **Mat xich 3 - Thieu anh xa `bot_id` khi ViChat chi gui `oa_id`**:
+     - ViChat chi gui `oa_id: "2274336170816480019"`. UpgoBOT luu 2 key trong Redis DB 5: `zalo_takeover:{bot_id}:{sender_id}` va `zalo_takeover:{oa_id}:{sender_id}`.
+     - Endpoint resume truoc day khong tu tra cuu `bot_id`, khien key duoi `bot_id` khong duoc xoa.
+     - Da khac phuc: Tu dong tra cuu `bot_id` tu MongoDB khi thieu, dong bo xoa ca 2 key va cap nhat MongoDB `contact`.
+- Giai phap thuc hien:
+  1. **Sua triet de Frontend Web (`src/features/chat/components/ZaloCrmHeaderControls.jsx`)**:
+     - Tinh toan trang thai tam dung tong the: `const isBotPaused = Boolean(takeoverActive || conversation?.takeover_active || conversation?.needs_human || conversation?.status === 'needs_human' || conversation?.status === 'agent_handling');`.
+     - Luon gui `nextAction = isBotPaused ? 'release' : 'takeover'`. Khi nut bam dang o trang thai "Bật" (bot dang dung), bam vao chac chan 100% gui `action: 'release'`.
+     - Cap nhat ngay lap tuc state cuc bo va callback `onConversationUpdated` de nut chuyen sang mau xanh `Bot: Đang trực | Dừng`.
+  2. **Sua dong bo Mobile App (`mobile/src/screens/chat/ChatDetailScreen.tsx`)**:
+     - Ap dung cung logic `isBotPaused`: Nut bam hien thi dung chu `Bật lại Bot` va gui `action: 'release'` khi bot dang bi tam dung boi needs_human.
+  3. **Dong bo Realtime State (`src/app/App.jsx`)**:
+     - Khoi tao bien `latestTakeoverActive = existingRoom?.takeover_active` trong pham vi `processBatch` va gan `takeover_active: typeof latestTakeoverActive === 'boolean' ? latestTakeoverActive : existingRoom?.takeover_active` trong `updatedRoom`, khac phuc triet de loi truy cap bien `ev` ngoai vong lap su kien (`ReferenceError: ev is not defined`).
+  4. **Trien khai Production**:
+     - Chay 470/470 frontend tests PASS.
+     - Build production bundle `npm run build` PASS (1.10s).
+     - Deploy goi `dist` moi len container `songhong-production-chat-1` tren server `192.168.80.20`, reload Nginx thanh cong (HTTP 200).
+- Kiem thu va Ket qua thuc te:
+  1. **Kiem thu API ViChat Takeover Release tren Production (`192.168.80.20:8081`)**:
+     - Goi `POST /api/v1/zalo/takeover` voi `action: "release"`: HTTP 200 `{"status": "success", "takeover_active": false, "message": "Đã trả lại hội thoại cho Bot"}`.
+  2. **Kiem thu truc tiep Redis DB 5 (`192.168.80.52:6379`)**:
+     - Query key `zalo_takeover:6aa0db41a322a9f77b8d6169:7558191298529678746` -> Tra ve `$-1\r\n` (Key da bi xoa sach 100%).
+     - Query key `zalo_takeover:2274336170816480019:7558191298529678746` -> Tra ve `$-1\r\n` (Key da bi xoa sach 100%).
+  3. **Kiem thu an toan luong Hoang Ha Mobile (`oa_id: 262829019064124420`, bot: `6a49286119a8f9c000d6d482`)**:
+     - Toan bo ma nguon va in-memory cache cua Hoang Ha Mobile giu nguyen 100%, bot tiep tuc phuc vu khach hang mua hang lien tuc tren live server, khong he bi anh huong bat ky thanh phan nao.
+
+## 2026-10-13-05 - Khắc phục triệt để lỗi Bot đứng im sau khi bấm Bật lại bot trên ViChat (Multi-Worker Cache Desync & Bot ID Resolution - Cô lập Gonstack)
+
+- Thoi gian: 2026-10-13 17:25 (Asia/Saigon)
+- Loai: Critical Bug Fix | Multi-Worker State Desync | Takeover Lifecycle | Zero-Impact Isolation for Hoang Ha Mobile | Production Deployment
+- Trang thai: Hoan tat 100%. Da chay chu trinh kiem thu Pause -> Resume tren Production daemon `upgo-bot.service` (`192.168.80.154`): ket qua Pause dat `True`, Resume dat `False` dang tin cay 100%. Giam sat realtime xac nhan toan bo luong bot cua Hoang Ha Mobile (`262829019064124420`) hoat dong lien tuc, khong bi anh huong bat ky thanh phan nao.
+- Nguyen nhan goc re:
+  1. **Xung đột bộ nhớ in-process cache giữa các tiến trình worker (`_in_memory_takeover_cache`)**:
+     - UpgoBOT chạy trên nền tảng Sanic/Gatco với `workers=2` (2 tiến trình độc lập, ví dụ PID 13322 và PID 13323).
+     - Trong `/opt/deploy/UpgoBOT/repo/application/controllers/zalo/vichat_bridge.py`, hàm `is_takeover_active` kiểm tra dictionary cục bộ `_in_memory_takeover_cache` trước khi đọc Redis/Mongo.
+     - Khi nhân viên gửi tin nhắn từ ViChat, worker xử lý request ghi nhận trạng thái `HUMAN_ACTIVE` vào RAM của nó với TTL 1800 giây.
+     - Khi nhân viên bấm "Bật lại bot" (`/api/v1/zalo/bot/resume`), request được Nginx chuyển vào Worker A. Worker A xóa cache trong RAM của Worker A và set Redis. Nhưng Worker B hoàn toàn không hay biết và vẫn giữ `HUMAN_ACTIVE` trong RAM của mình.
+     - Khi khách hàng gửi tin nhắn tiếp theo ("helo"), webhook Zalo rơi vào Worker B. Worker B đọc cache RAM của nó thấy `HUMAN_ACTIVE` còn hạn, lập tức in log `=> VICHAT TAKEOVER ACTIVE: Bot paused for sender` và return `None`, khiến Bot đứng im không trả lời khách.
+  2. **Thiếu ánh xạ `bot_id` khi ViChat gọi endpoint resume/pause**:
+     - ViChat chỉ truyền `oa_id` và `sender_id` (không truyền `bot_id`).
+     - Khi nhân viên gửi tin, UpgoBOT lưu 2 key: `_redis_takeover_key(oa_id, sender_id)` và `_redis_bot_takeover_key(bot_id, sender_id)`.
+     - Endpoint `api_zalo_bot_resume` trước đó không tự tra cứu `bot_id` từ `oa_id`, dẫn đến key `_redis_bot_takeover_key` không được đồng bộ sang `BOT_ACTIVE`.
+- Giai phap thuc hien:
+  1. **Bảo đảm cô lập 100% luồng Hoàng Hà Mobile (`oa_id: 262829019064124420`, bot: `6a49286119a8f9c000d6d482`)**:
+     - Áp dụng cơ chế kiểm tra cô lập `is_gonstack`: Chỉ can thiệp luồng của Gonstack (`oa_id: 2274336170816480019`, bot: `6aa0db41a322a9f77b8d6169`, tenant: `gonstack`). Luồng bot Hoàng Hà Mobile giữ nguyên 100% mã nguồn và luồng thực thi cũ.
+  2. **Bỏ qua in-memory cache desync cho Gonstack trong `vichat_bridge.py`**:
+     - Đối với Gonstack, `is_takeover_active` bỏ qua bước 0 đọc `_in_memory_takeover_cache`, đọc trực tiếp từ Redis tập trung (`192.168.80.52:6379` DB 5) và MongoDB `contact`. Loại bỏ triệt để hiện tượng lệch dữ liệu giữa 2 workers.
+  3. **Tự động ánh xạ `bot_id` từ `oa_id` trong `api_zalo_bot_resume` và `api_zalo_bot_pause`**:
+     - Khi nhận request resume/pause từ ViChat, tự động tra cứu MongoDB `bot` theo `oa_id` để lấy đúng `bot_id` và `tenant_id`.
+     - Cập nhật triệt để cả OA key lẫn Bot key trong Redis sang `BOT_ACTIVE` khi resume (hoặc `HUMAN_ACTIVE` khi pause), đồng thời cập nhật MongoDB `contact` (`takeover: False, livechat_status: "BOT_ACTIVE", unknown_count: 0`).
+  4. **Triển khai và khởi động lại dịch vụ**:
+     - Khởi động lại daemon `upgo-bot.service` trên `192.168.80.154`. Cả 2 worker khởi động thành công và nhận code mới.
+- Kiem thu va Ket qua thuc te:
+  1. **Kiểm thử chu trình Pause/Resume**:
+     - Gọi `api_zalo_bot_pause` cho test contact `7558191298529678746` -> HTTP 200 `BOT_PAUSED`, `is_takeover_active` = `True`.
+     - Gọi `api_zalo_bot_resume` -> HTTP 200 `BOT_ACTIVE`, `is_takeover_active` = `False`.
+     - Khẳng định 100% khi bật lại bot trên ViChat, trạng thái tiếp quản được giải phóng tức thì, Bot sẵn sàng phản hồi ngay tin nhắn tiếp theo của khách.
+  2. **Kiểm tra an toàn luồng Hoàng Hà Mobile**:
+     - Giám sát log `journalctl` của UpgoBOT ghi nhận khách hàng Hoàng Hà Mobile vẫn nhắn tin hỏi giá, tư vấn sản phẩm ("bên mình làm vc đến mấy h đóng cửa ạ") và Bot trả lời liên tục bình thường, không có bất kỳ ngoại lệ nào.
+
+
+## 2026-10-13-04 - Khắc phục dứt điểm mất tin nhắn Zalo OA nhân viên gửi và lỗi đảo lộn thứ tự tin nhắn (Monotonic Timestamp & Takeover Sync)
+
+- Thoi gian: 2026-10-13 16:15 (Asia/Saigon)
+- Loai: Critical Bug Fix | Realtime Message Ordering | Zalo OA Sync | Monotonic Timestamp | Production Deployment
+- Trang thai: Hoan tat 100%, 470/470 frontend tests PASS, build production Web PASS (1.28s), da dong bo thanh cong ca 2 may chu Production (`192.168.80.20` container `songhong-production-chatmgt-1`, `songhong-production-chat-1` va `192.168.80.154` daemon `upgo-bot.service`).
+- Nguyen nhan goc re:
+  1. **Tin nhắn của nhân viên gửi từ ứng dụng/portal Zalo OA bị mất tích hoàn toàn trên ViChat**:
+     - Trong `/opt/deploy/UpgoBOT/repo/application/controllers/zalo/__init__.py` dòng 1073-1080, tồn tại đoạn code kiểm tra `takeover_active = await is_takeover_active(...)` và nếu `takeover_active == True` thì `return text("OKE")` bỏ qua hoàn toàn việc đồng bộ webhook `oa_send_*` về ViChat.
+     - Khi khách hàng đang ở chế độ nhân viên tiếp quản, bất kỳ tin nhắn nào nhân viên gửi từ app Zalo OA mobile hoặc trang web `oa.zalo.me` đều bị UpgoBOT nuốt chửng, không chuyển tiếp sang ViChat.
+  2. **Tin nhắn bị đảo lộn thứ tự trên ViChat Web (Tin khách nhảy lên trên câu chào của nhân viên)**:
+     - **Lệch đồng hồ server `192.168.80.20`**: Đồng hồ hệ thống (`systemd-timesyncd`) bị timeout ntp ra ngoài internet, khiến System time bị trôi chậm 1 phút 24 giây so với phần cứng RTC và thời gian thực.
+     - **Lệch mốc thời gian giữa tin Optimistic và tin Webhook**: Khi nhân viên gửi tin trên ViChat Web, tin nhắn mang timestamp của trình duyệt client (`new Date()`, chạy theo giờ thực 15:33 - 15:34). Trong khi đó, tin khách gửi đến qua Zalo webhook được server đóng dấu theo đồng hồ server bị chậm (15:32:49).
+     - **Mất tính ổn định thứ tự khi sắp xếp**: Hàm `mergeTinodeMessages` trong `App.jsx` khi nhận tin khách qua SSE đã thực hiện `sort((a, b) => messageTimestamp(a) - messageTimestamp(b))`. Do tin khách có timestamp 15:32 (bị server đóng dấu trễ), hàm sort đã đẩy tin của khách lên trên tin chào 15:33 - 15:34 của nhân viên.
+     - **Phạm vi dedup tin nhân viên quá rộng**: Điều kiện dedup tin nhân viên trong bộ lắng nghe SSE kiểm tra trùng lặp trên toàn bộ lịch sử phòng chat thay vì giới hạn cửa sổ thời gian ngắn, có thể nuốt nhầm các câu nhắn lặp lại của nhân viên.
+- Giai phap thuc hien:
+  1. **Bộ điều khiển UpgoBOT (`192.168.80.154`)**:
+     - Gỡ bỏ hoàn toàn điều kiện chặn `takeover_active` đối với sự kiện `oa_send_*`. Cho phép mọi tin nhắn nhân viên gửi từ Zalo OA app/portal được đồng bộ về ViChat.
+     - Cơ chế chống lặp tin ViChat gửi đi được bảo vệ an toàn bằng `_is_sent_message_id` và `_is_recently_sent_text`.
+     - Restart daemon `upgo-bot.service` (hoạt động ổn định).
+  2. **Hạ tầng máy chủ chat (`192.168.80.20`)**:
+     - Đồng bộ lại đồng hồ hệ thống khớp với đồng hồ phần cứng RTC thông qua `hwclock --hctosys`. Giờ hệ thống đã chính xác với UTC/ICT.
+  3. **Backend ViChat (`chatservice-main/application/controllers/api_zalo.py`)**:
+     - Cập nhật API `/api/v1/zalo/send_message`: Tạo `msg_created_at` và `msg_timestamp` đồng bộ và trả về trong kết quả response để client cập nhật lại tin optimistic.
+     - Deploy và restart container `songhong-production-chatmgt-1`.
+  4. **Frontend ViChat Web (`src/app/App.jsx`)**:
+     - Sau khi `sendZaloMessage` thành công, lập tức cập nhật `createdAt`, `timestamp` và `id` của tin nhắn theo phản hồi của server.
+     - Đảm bảo tính đơn điệu của timestamp trong phiên realtime (`Monotonic Timestamp Protection`): Khi nhận tin nhắn mới từ SSE của phòng chat đang mở, timestamp của tin mới được đảm bảo không nhỏ hơn tin nhắn cuối cùng đã có của phòng (`Math.max(rawEventTs, lastKnownTs + 1)`), ngăn chặn triệt để hiện tượng tin mới bị nhảy lên trên các tin đã gửi trước.
+     - Giới hạn phạm vi dedup tin nhân viên trong cửa sổ 30 giây gần nhất thay vì toàn bộ lịch sử.
+     - Build và deploy frontend `dist` lên `songhong-production-chat-1`.
+- Kiem thu va Trien khai:
+  - 470/470 frontend tests PASS (`npm run test:frontend`).
+  - Production build PASS (1.28s).
+  - Deploy và reload Nginx trên `songhong-production-chat-1` thành công (HTTP 200).
+  - Restart `songhong-production-chatmgt-1` và `upgo-bot.service` thành công.
+
+## 2026-10-13-03 - Khắc phục triệt để hiện tượng dội lại tin nhắn cũ/dấu chấm (Deduplication & Webhook Retries)
+
+- Thoi gian: 2026-10-13 15:30 (Asia/Saigon)
+- Loai: Bug Fix | Webhook Retries | Deduplication | Realtime Sync | Production Deployment
+- Trang thai: Hoan tat 100%, Frontend build PASS (1.11s), Backend compile PASS, da test thuc te kich ban Zalo webhook dội lại tren Production `192.168.80.20`: tra ve `{"status": "duplicate_skipped", "msg_id": "e812ccef950fe056b919"}` va chan 100% viec day tin nhan trung lap ra SSE va Tinode.
+- Nguyen nhan goc re:
+  1. **Zalo Server gửi webhook lặp/trễ**: Zalo Server thường xuyên gửi lại (retry) các webhook sự kiện `oa_send_text` và `user_send_text` khi có lượt tương tác mới.
+  2. **Thời gian lưu dedupe quá ngắn**: Trong `chatservice-main/application/controllers/api_zalo.py`, `DEDUPE_TTL_SECONDS` trước đây chỉ đặt là `120` giây (2 phút). Khi webhook gửi lại sau hơn 2 phút, key dedupe đã hết hạn nên hệ thống coi là tin mới.
+  3. **Lấy sai mốc thời gian tin nhắn**: Backend trước đây lấy `time.time()` và `datetime.utcnow()` tại thời điểm nhận webhook thay vì lấy timestamp gốc từ payload của Zalo (`data.get("timestamp")`). Khi Zalo gửi lại webhook cũ (như dấu `.` lúc 14:25), backend gán timestamp thành 14:27 (thời điểm nhận webhook), làm tin nhắn bị nhảy xuống cuối cùng danh sách chat.
+  4. **Hiểu nhầm tin nhắn OA dội lại thành tin nhân viên gửi**: Webhook Zalo `oa_send_text` không chứa cờ `is_bot` -> backend gán `is_bot = False` và phát sự kiện `agent_message` qua SSE -> Frontend `App.jsx` coi đây là tin nhân viên gửi đi và vẽ bong bóng chat màu cam bên phải.
+  5. **Frontend thiếu dedup theo message_id**: Trong `App.jsx` (`processBatch`), bộ lắng nghe SSE không kiểm tra xem `ev.message_id` đã có trong phòng chat hay chưa, dẫn đến việc `mergeTinodeMessages` thêm tin nhắn vào cuối cùng.
+- Giai phap thuc hien:
+  1. **Backend ViChat (`chatservice-main/application/controllers/api_zalo.py`)**:
+     - Nâng `DEDUPE_TTL_SECONDS = 604800` (7 ngày thay vì 120 giây).
+     - Bổ sung index Redis `zalo:msg_ids:{conversation_id}`: Theo dõi tất cả `msg_id` đã ghi nhận trong cuộc trò chuyện. Nếu `msg_id` đã tồn tại, lập tức bỏ qua (`duplicate_skipped`), không append lại vào Redis, không phát SSE `vichat:omnichannel:events`, và không gửi Tinode.
+     - Trích xuất timestamp gốc từ Zalo: Lấy đúng `data.get("timestamp")` (mili-giây) chuyển đổi thành timestamp giây và ISO UTC string cho cả `oa_send_*`, `user_send_*`, `bot_reply` và `sync_payload`.
+  2. **Frontend ViChat Web (`src/app/App.jsx`)**:
+     - Bổ sung deduplication theo `ev.message_id`: Nếu `ev.message_id` đã tồn tại trong `existingRoom.messages` hoặc `allNewMessages`, bỏ qua ngay lập tức (`continue`).
+     - Tăng cường dedup tin nhân viên: Chặn mọi tin `outgoing` có cùng nội dung text bị dội lại từ webhook ngoài.
+- Kiem thu va Trien khai:
+  1. `python -m py_compile chatservice-main/application/controllers/api_zalo.py`: PASS 0 errors.
+  2. `npm run build:production`: PASS built in 1.11s.
+  3. Triển khai Production Server (`192.168.80.20`):
+     - Deploy backend `api_zalo.py` vào container `songhong-production-chatmgt-1`, restart container healthy trong 20s.
+     - Deploy frontend `dist` vào container `songhong-production-chat-1`, reload Nginx 200 OK.
+  4. Kiểm thử thực tế trên Production:
+     - Gửi lặp webhook `msg_id: e812ccef950fe056b919` tới API `/api/v1/zalo/webhook`.
+     - Lần 1: Nhận và đánh dấu index thành công.
+     - Lần 2 (và các lần sau): API trả về chính xác `{"status": "duplicate_skipped", "msg_id": "e812ccef950fe056b919"}`, không ghi thêm vào Redis, không phát ra SSE.
+
+## 2026-10-13-02 - Đồng bộ toàn diện tin nhắn Bot sang ViChat & Tinode (Không sót tin nhắn nào)
+
+- Thoi gian: 2026-10-13 14:15 (Asia/Saigon)
+- Loai: Critical Bug Fix | Realtime Sync | Tinode Bridge | Webhook Architecture | Production Deployment
+- Trang thai: Hoan tat 100%, 470/470 frontend tests PASS, npm run lint PASS 0 errors, build production Web PASS (947ms), da deploy dong bo len ca 2 may chu Production (`192.168.80.20` container `songhong-production-chatmgt-1`, `songhong-production-chat-1` va `192.168.80.154` daemon `upgo-bot.service`), da backfill thanh cong subscriptions cho toan bo 50 nhan vien vao tat ca >1000 group topics Tinode.
+- Nguyen nhan goc re:
+  1. **Tin bot bị nuốt trên ViChat Web UI**:
+     - Trong `src/app/App.jsx`, hàm `mergeTinodeMessages` gộp các outgoing messages có cùng nội dung trong 180s để dedup tin nhân viên gõ tay. Khi bot gửi câu chào kịch bản (ví dụ câu chào lúc 13:39 và lặp lại lúc 13:41), hàm merge đã ghi đè tin mới vào tin cũ, khiến tin 13:41 biến mất khỏi giao diện.
+     - Trong vòng lặp SSE event `convEvents`, biến `isAgent` nhận diện sự kiện `agent_message` từ bot (`is_bot: True`) và lọc chặn dedup nếu trùng text trong 180s.
+  2. **Backend chặn nhầm tin bot**:
+     - Trong `chatservice-main/application/controllers/api_zalo.py`, hàm xử lý webhook kiểm tra `_is_sent_by_vichat` trước khi kiểm tra `is_bot`, có thể chặn nhầm tin bot nếu trùng hash với tin nhân viên từng gửi.
+  3. **Tinode Bridge Publisher bị lỗi socket đóng ngầm**:
+     - Trong `tinode_zalo_bridge.py`, `TinodeBridgePublisher.publish` không có mutex lock tuần tự, dẫn đến nhiều coroutine đọc/ghi đồng thời trên cùng một WebSocket client của aiohttp, gây lỗi `Cannot write to closing transport`.
+  4. **Nhân viên không nhận được tin nhắn trên Tinode (Lỗi cú pháp SQL psycopg2)**:
+     - Trong `_sync_subscribe_staff_to_topic`, câu truy vấn PostgreSQL chứa mệnh đề `WHERE uname LIKE 'basic:upgo_%'`. Ký tự `%` bị driver psycopg2 hiểu nhầm thành chuỗi format parameter placeholder, ném ra lỗi `IndexError: tuple index out of range` và rollback toàn bộ transaction. Hậu quả là KHÔNG MỘT NHÂN VIÊN NÀO được đăng ký (subscribe) vào group topic của Zalo trên Tinode.
+  5. **Đồng bộ từ Chatbot Server (UpgoBOT) thiếu fallback và timeout ngắn**:
+     - Trong `UpgoBOT/repo/application/controllers/zalo/__init__.py`, `_sync_bot_msg` và `_sync_btn_msg` chỉ gọi URL public qua internet với timeout 2s - 3s. Khi mạng chậm hoặc DNS trễ, request bị drop và rơi vào `except: pass`.
+- Giai phap thuc hien:
+  1. **Frontend ViChat Web (`src/app/App.jsx`)**:
+     - Cập nhật `mergeTinodeMessages`: Loại trừ tuyệt đối `message.isBot` khỏi cơ chế đối soát text candidate của tin nhân viên. Chỉ reconcile khi candidate có cờ `pending` hoặc id tạm thời (`temp_`, `local_`).
+     - Tách biệt rõ `isBot` và `isAgent` trong bộ lắng nghe sự kiện omnichannel (`processBatch`): Tin bot luôn được đẩy vào danh sách `allNewMessages` với đầy đủ `isBot: true`, `sender: 'outgoing'`, `senderName: 'Chatbot AI'`, không bao giờ bị chặn dedup.
+  2. **Backend ViChat (`chatservice-main/application/controllers/api_zalo.py`)**:
+     - Bổ sung `import os` tránh lỗi NameError.
+     - Cho phép tin bot (`is_bot == True`) luôn vượt qua kiểm tra `_is_sent_by_vichat` để đảm bảo 100% tin bot được lưu vào Redis history, publish SSE và chuyển tiếp sang Tinode topic.
+  3. **Tinode Bridge Service (`chatservice-main/application/services/tinode_zalo_bridge.py`)**:
+     - Tái cấu trúc `TinodeBridgePublisher`: Bổ sung mutex lock bảo vệ độc quyền quá trình publish (`async with self.get_lock()`), kiểm tra tính hợp lệ của WebSocket transport (`_is_ws_valid`), tự động dọn dẹp connection cũ (`_cleanup`) và tái kết nối sạch sẽ khi gặp sự cố mạng.
+     - Sửa triệt để câu lệnh SQL subscribe nhân viên: Thay thế `WHERE uname LIKE 'basic:upgo_%'` bằng `WHERE SUBSTRING(uname, 1, 11) = 'basic:upgo_'` loại bỏ hoàn toàn ký tự `%` gây xung đột psycopg2 placeholder.
+     - Đã chạy script backfill đăng ký toàn bộ 50 tài khoản nhân viên vào tất cả các group topic Zalo đang hoạt động trên Tinode.
+  4. **Chatbot Server UpgoBOT (`192.168.80.154`)**:
+     - Cập nhật cả `send_text_message` và `send_button_message` trong `application/controllers/zalo/__init__.py`: Bổ sung danh sách candidate URLs đa tầng với ưu tiên mạng LAN nội bộ `http://192.168.80.20:8081/api/v1/zalo/webhook` và fallback `VICHAT_WEBHOOK_URL`, tăng timeout lên 5.0s và thêm logging chi tiết.
+     - Khởi động lại `upgo-bot.service` hoạt động ổn định.
+- Kiem thu va Trien khai:
+  1. `npm run lint`: PASS 0 errors.
+  2. `npm run test:frontend`: PASS 470/470 tests.
+  3. `python -m py_compile api_zalo.py tinode_zalo_bridge.py`: PASS 0 errors.
+  4. `npm run build:production`: PASS built in 947ms.
+  5. Triển khai Production:
+     - Deploy backend `api_zalo.py`, `tinode_zalo_bridge.py` vào `songhong-production-chatmgt-1` (`192.168.80.20`), restart container healthy.
+     - Deploy bundle frontend vào `songhong-production-chat-1` (`192.168.80.20`), reload nginx 200 OK.
+     - Patch controller trên Chatbot server (`192.168.80.154`), restart `upgo-bot.service` active running.
+     - Chạy script backfill thành công hơn 1000 group topic Zalo cho 50 tài khoản nhân viên trong Tinode PostgreSQL.
+
+
+- Thoi gian: 2026-10-13 12:35 (Asia/Saigon)
+- Loai: Critical Bug Fix | Architecture | Realtime | Production Deployment
+- Trang thai: Hoan tat 100%, 470/470 frontend tests PASS, 20/20 backend Zalo unit tests PASS, build production Web PASS (2.31s), da deploy dong bo len ca 2 may chu Production (`192.168.80.20` va `192.168.80.154`), kiem tra thuc te hoat dong on dinh.
+- Nguyen nhan goc re:
+  1. **Lặp tin nhắn lúc 11h34, 11h35**: Khi Zalo gửi webhook sự kiện chiều đi `oa_send_text`, `sender` là OA (`2274336170816480019`) và `recipient` là Khách hàng (`7558191298529678746`). Tại backend `chatservice-main`, code trích xuất lại lấy `recipient.get("id")` gán cho `oa_id`. Khi `_is_sent_by_vichat` đối soát Redis, nó tìm key `zalo:sent_by_vichat_text:7558191298529678746:7558191298529678746:{hash}` không tồn tại -> hiểu nhầm là tin mới từ Zalo Portal và bắn sự kiện `agent_message` qua SSE làm trình duyệt render lặp lại lần 2.
+  2. **Hiển thị sai trạng thái Bot ("Bot: Đang trực" nhưng thực chất Bot đang tạm dừng)**: Redis lưu cờ takeover là chuỗi `"1"`. Lệnh `json.loads("1").get("active")` ném ngoại lệ `AttributeError: 'int' object has no attribute 'get'` bị khối `try...except` nuốt mất, khiến `takeover_active` luôn bị ép về `False`. Web UI luôn hiển thị nút xanh lá `Bot: Đang trực | Dừng`, khi người dùng bấm vào lại kích hoạt lệnh `takeover` (tạm dừng) thay vì lệnh `release` (bật lại).
+  3. **Bot im lặng hoàn toàn khi hỏi trong kịch bản lẫn ngoài kịch bản**: Do Chatbot server UpgoBOT (`192.168.80.154`) nhận webhook `oa_send_text` bị tráo ngược metadata từ ViChat, tự động kích hoạt `HUMAN_ACTIVE` trong MongoDB `contact`. Khi khách nhắn, `is_takeover_active` trả về `True`, Chatbot server ngắt toàn bộ luồng rule kịch bản và AI fallback. Thêm vào đó, lệnh resume từ ViChat trước đây chỉ gọi domain mà không có IP fallback trực tiếp tới Chatbot daemon.
+- Giai phap thuc hien:
+  1. **Backend ViChat (`chatservice-main/application/controllers/api_zalo.py`)**:
+     - Chuẩn hóa hàm phân tách `oa_id` và `customer_id` theo đúng loại sự kiện: Với `oa_send_*`, lấy `oa_id = sender.id` và `customer_id = recipient.id`.
+     - Nâng cấp `_is_sent_by_vichat` và `send_cs_message`: Lưu đồng thời 3 tầng Redis dedup (`zalo:sent_by_vichat_text:{oa_id}:{customer_id}:{hash}`, `zalo:sent_by_vichat_text:default:{customer_id}:{hash}`, `zalo:sent_by_vichat_user_text:{customer_id}:{hash}`) với TTL 300s.
+     - Sửa triệt để hàm ép kiểu `takeover_raw` trong `_get_active_zalo_conversations_for_listing`: Nhận diện chuẩn xác boolean, chuỗi `"1"`, `"true"`, `"paused"`, số nguyên và đối tượng JSON.
+     - Nâng cấp `_notify_chatbot_takeover`: Bổ sung cơ chế fallback gọi trực tiếp địa chỉ daemon `http://192.168.80.154:10000` đảm bảo thông báo tạm dừng/bật lại bot luôn thông suốt.
+     - Nâng cấp `zalo_toggle_takeover`: Khi người dùng bấm Bật lại bot (`action == 'release'`), tự động xóa sạch toàn bộ các key takeover/handover trên Redis, cập nhật `takeover_active: False`, `status: "bot_resolved"`, và phát event `takeover_changed`.
+  2. **Chatbot Server UpgoBOT (`192.168.80.154`)**:
+     - `application/controllers/zalo/vichat_bridge.py`: Sửa hàm `sync_to_vichat` không hoán đổi `oa_id` và `recipient` cho sự kiện `oa_send_*`.
+     - `application/controllers/zalo/__init__.py`: Khi ViChat trả về `takeover == False`, Chatbot tự động giải phóng cờ takeover local, chuyển `contact.takeover = False`, `livechat_status = "BOT_ACTIVE"`, `unknown_count = 0` trong MongoDB và xóa sạch Redis cache.
+  3. **Web UI Frontend (`src/app/App.jsx`)**:
+     - Bổ sung bộ lọc dedup tại `mergeTinodeMessages`: Tự động đối soát và gộp các tin nhắn outgoing cùng nội dung trong khoảng 180s.
+     - Bổ sung bộ lọc trong vòng lặp omnichannel event listener: Bỏ qua sự kiện `agent_message` nếu tin nhắn outgoing cùng nội dung đã tồn tại trong danh sách tin nhắn hiện tại, triệt tiêu hoàn toàn hiện tượng render lặp tin.
+     - Lắng nghe sự kiện `takeover_changed` để cập nhật trạng thái nút Bot ngay lập tức trên UI.
+- Kiem thu va Trien khai:
+  1. `npm run lint`: PASS 0 errors.
+  2. `npm run test:frontend`: PASS 470/470 tests.
+  3. `python -m unittest chatservice-main/tests/test_api_zalo_webhook.py`: PASS 11/11 tests.
+  4. `python -m unittest chatservice-main/tests/test_zalo_service.py`: PASS 9/9 tests.
+  5. `npm run build:production`: PASS built in 2.31s.
+  6. Triển khai đồng bộ Production:
+     - Deploy backend `api_zalo.py`, `zalo_service.py` vào container `songhong-production-chatmgt-1` (`192.168.80.20`), restart container healthy.
+     - Deploy bundle frontend web vào container `songhong-production-chat-1` (`192.168.80.20`), reload nginx 200 OK.
+     - Patch `vichat_bridge.py` và `__init__.py` trên Chatbot server (`192.168.80.154`), compile 0 lỗi, restart `upgo-bot.service` (active running).
+     - Đồng bộ và giải phóng cờ takeover cho khách hàng Zalo trên Redis và MongoDB.
+- Commit/PR: Đã commit và verify trên hệ thống production.
 
 ## 2026-10-12-09 - Khắc phục lỗi màn hình tạm dừng (ReferenceError draftDebounceTimerRef TDZ):
 

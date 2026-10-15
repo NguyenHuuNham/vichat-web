@@ -34,7 +34,7 @@ export default function ZaloCrmHeaderControls({
     setAssignedAgentName(conversation?.assigned_agent_name || '');
     setWorkflowStage(conversation?.workflow_stage || 'new');
     setTakeoverActive(Boolean(conversation?.takeover_active || conversation?.status === 'agent_handling'));
-  }, [conversation?.id, conversation?.assigned_agent_id, conversation?.assigned_agent_name, conversation?.workflow_stage, conversation?.takeover_active, conversation?.status]);
+  }, [conversation?.id, conversation?.assigned_agent_id, conversation?.assigned_agent_name, conversation?.workflow_stage, conversation?.takeover_active, conversation?.status, conversation?.needs_human]);
 
   // Load employee directory if accounts is empty
   useEffect(() => {
@@ -125,10 +125,18 @@ export default function ZaloCrmHeaderControls({
     }
   };
 
+  const isBotPaused = Boolean(
+    takeoverActive ||
+    conversation?.takeover_active ||
+    conversation?.needs_human ||
+    conversation?.status === 'needs_human' ||
+    conversation?.status === 'agent_handling'
+  );
+
   const handleToggleTakeover = async () => {
     if (takeoverLoading) return;
     setTakeoverLoading(true);
-    const nextAction = takeoverActive ? 'release' : 'takeover';
+    const nextAction = isBotPaused ? 'release' : 'takeover';
     const parts = String(conversation?.id || '').split(':');
     const oaId = conversation?.oa_id || (parts.length >= 3 ? parts[1] : 'default');
     const userId = conversation?.zalo_user_id || conversation?.userId || (parts.length >= 3 ? parts[2] : conversation?.id);
@@ -177,27 +185,20 @@ export default function ZaloCrmHeaderControls({
         {/* Nút Dừng Bot / Bật lại Bot */}
         <button
           type="button"
-          className={`zalo-crm-bot-toggle ${takeoverActive ? 'bot-paused' : (conversation?.needs_human ? 'needs-human' : 'bot-active')}`}
+          className={`zalo-crm-bot-toggle ${isBotPaused ? (conversation?.needs_human || conversation?.status === 'needs_human' ? 'needs-human' : 'bot-paused') : 'bot-active'}`}
           onClick={handleToggleTakeover}
           disabled={takeoverLoading}
-          title={takeoverActive ? 'Nhân viên đang hỗ trợ trực tiếp. Bấm để chuyển lại cho Bot tự động' : 'Bấm để dừng Bot và nhân viên trực tiếp vào trả lời'}
+          title={isBotPaused ? 'Nhân viên đang hỗ trợ hoặc Bot đang tạm dừng. Bấm để chuyển lại cho Bot tự động' : 'Bấm để dừng Bot và nhân viên trực tiếp vào trả lời'}
         >
           {takeoverLoading ? (
             <>
               <i className="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
               <span>Đang xử lý...</span>
             </>
-          ) : takeoverActive ? (
+          ) : isBotPaused ? (
             <>
-              <span className="zalo-crm-dot zalo-crm-dot-amber"></span>
-              <span>Bot: Đã dừng</span>
-              <span className="zalo-crm-pipe">|</span>
-              <span className="zalo-crm-action-link">Bật</span>
-            </>
-          ) : conversation?.needs_human ? (
-            <>
-              <span className="zalo-crm-dot zalo-crm-dot-red"></span>
-              <span>Bot: Tạm dừng</span>
+              <span className={`zalo-crm-dot ${conversation?.needs_human || conversation?.status === 'needs_human' ? 'zalo-crm-dot-red' : 'zalo-crm-dot-amber'}`}></span>
+              <span>{conversation?.needs_human || conversation?.status === 'needs_human' ? 'Bot: Tạm dừng' : 'Bot: Đã dừng'}</span>
               <span className="zalo-crm-pipe">|</span>
               <span className="zalo-crm-action-link">Bật</span>
             </>

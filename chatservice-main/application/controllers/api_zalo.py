@@ -8,6 +8,7 @@ from datetime import datetime
 import functools
 import json
 import logging
+import os
 import time
 from gatco.response import json as json_response, text as text_response, stream
 from sanic.response import redirect
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 zalo_service = ZaloService(app)
 chatbot_service = ChatbotService(app)
 
-DEDUPE_TTL_SECONDS = 120
+DEDUPE_TTL_SECONDS = 604800  # 7 days deduplication window for Zalo webhooks
 TAKEOVER_TTL_SECONDS = 1800  # 30 minutes of agent takeover window
 PENDING_HANDOVER_TTL_SECONDS = 900  # 15 minutes of pending handover buffer
 MAX_ZALO_HISTORY_PER_CONV = 500
@@ -127,7 +128,7 @@ def _extract_request_tenant(request) -> str:
 
 
 def _is_sent_by_vichat(oa_id: str, customer_id: str, msg_id: str, text: str) -> bool:
-    """Check if message was already dispatched by ViChat staff to prevent dual-publishing to Tinode."""
+    """Check if message was already dispatched by ViChat staff to prevent dual-publishing to Tinode and duplicate bubbles."""
     if redisdb is None:
         return False
     try:
@@ -135,8 +136,16 @@ def _is_sent_by_vichat(oa_id: str, customer_id: str, msg_id: str, text: str) -> 
             return True
         if text and customer_id:
             import hashlib
-            h = hashlib.md5(str(text).strip().encode("utf-8")).hexdigest()
-            if redisdb.exists("zalo:sent_by_vichat_text:{}:{}:{}".format(oa_id or "default", str(customer_id).strip(), h)):
+            clean_text = str(text).strip()
+            h = hashlib.md5(clean_text.encode("utf-8")).hexdigest()
+            # 1. Exact oa_id and customer_id
+            if oa_id and redisdb.exists("zalo:sent_by_vichat_text:{}:{}:{}".format(oa_id, str(customer_id).strip(), h)):
+                return True
+            # 2. Default oa_id
+            if redisdb.exists("zalo:sent_by_vichat_text:default:{}:{}".format(str(customer_id).strip(), h)):
+                return True
+            # 3. User text key (independent of oa_id)
+            if redisdb.exists("zalo:sent_by_vichat_user_text:{}:{}".format(str(customer_id).strip(), h)):
                 return True
     except Exception as exc:
         logger.warning("Redis check _is_sent_by_vichat failed: %s", exc)
@@ -210,11 +219,29 @@ def _set_handover_pending(oa_id: str, sender_id: str, active: bool = True, ttl: 
             logger.warning("Redis set pending handover failed: %s", exc)
 
 
+def _is_message_already_in_conversation(conversation_id: str, msg_id: str) -> bool:
+    """Check if msg_id has already been recorded in this conversation to prevent duplicate processing."""
+    if not conversation_id or not msg_id:
+        return False
+    if redisdb is not None:
+        try:
+            return bool(redisdb.sismember("zalo:msg_ids:{}".format(conversation_id), str(msg_id).strip()))
+        except Exception as exc:
+            logger.warning("Redis check _is_message_already_in_conversation failed: %s", exc)
+    return False
+
+
 def _append_zalo_message(conversation_id: str, msg_payload: dict):
-    """Store message into the conversation's message history in Redis with pipeline batching."""
+    """Store message into the conversation's message history in Redis with pipeline batching and msg_id deduplication."""
     if not conversation_id or not msg_payload:
         return
+    msg_id = str(msg_payload.get("id") or "").strip()
+    if msg_id and _is_message_already_in_conversation(conversation_id, msg_id):
+        logger.info("Skipped append of already-recorded message id=%s conversation=%s", msg_id, conversation_id)
+        return
+
     key = "zalo:messages:{}".format(conversation_id)
+    ids_key = "zalo:msg_ids:{}".format(conversation_id)
     if redisdb is not None:
         try:
             if hasattr(redisdb, "pipeline"):
@@ -222,11 +249,17 @@ def _append_zalo_message(conversation_id: str, msg_payload: dict):
                 pipe.rpush(key, json.dumps(msg_payload))
                 pipe.ltrim(key, -MAX_ZALO_HISTORY_PER_CONV, -1)
                 pipe.expire(key, 86400 * 30)
+                if msg_id:
+                    pipe.sadd(ids_key, msg_id)
+                    pipe.expire(ids_key, 86400 * 30)
                 pipe.execute()
             else:
                 redisdb.rpush(key, json.dumps(msg_payload))
                 redisdb.ltrim(key, -MAX_ZALO_HISTORY_PER_CONV, -1)
                 redisdb.expire(key, 86400 * 30)
+                if msg_id:
+                    redisdb.sadd(ids_key, msg_id)
+                    redisdb.expire(ids_key, 86400 * 30)
         except Exception as exc:
             logger.warning("Failed to append Zalo message to Redis: %s", exc)
 
@@ -330,12 +363,21 @@ def _get_active_zalo_conversations_for_listing(tenant_id: str = None, limit: int
             takeover_active = False
             if isinstance(takeover_raw, bool):
                 takeover_active = takeover_raw
-            elif takeover_raw:
-                try:
-                    takeover_data = json.loads(takeover_raw.decode("utf-8") if isinstance(takeover_raw, bytes) else takeover_raw)
-                    takeover_active = bool(takeover_data.get("active", False))
-                except Exception:
-                    pass
+            elif takeover_raw is not None:
+                raw_str = (takeover_raw.decode("utf-8") if isinstance(takeover_raw, bytes) else str(takeover_raw)).strip().lower()
+                if raw_str in ("1", "true", "yes", "active", "paused", "bot_paused", "human_active", "agent_handling"):
+                    takeover_active = True
+                elif raw_str in ("0", "false", "", "none", "null", "bot_active", "bot_resolved"):
+                    takeover_active = False
+                else:
+                    try:
+                        takeover_data = json.loads(raw_str)
+                        if isinstance(takeover_data, dict):
+                            takeover_active = bool(takeover_data.get("active", False) or takeover_data.get("takeover", False))
+                        elif isinstance(takeover_data, (int, bool)):
+                            takeover_active = bool(takeover_data)
+                    except Exception:
+                        takeover_active = False
 
             oa_name = conv_obj.get("oa_name") or KNOWN_OA_NAME_MAP.get(oa_id) or "Zalo OA"
             customer_name = conv_obj.get("name") or "Khách Zalo"
@@ -460,8 +502,19 @@ async def zalo_webhook(request):
         data = {}
 
     event_name = data.get("event_name")
+    is_oa_event = str(event_name or "").startswith("oa_send_")
     recipient = data.get("recipient") or {}
-    oa_id = str(data.get("oa_id") or recipient.get("id") or app.config.get("ZALO_OA_ID") or "").strip()
+    sender = data.get("sender") or {}
+
+    if is_oa_event:
+        oa_id = str(data.get("oa_id") or sender.get("id") or app.config.get("ZALO_OA_ID") or "").strip()
+        customer_id = str(recipient.get("id") or data.get("user_id_by_app") or data.get("customer_id") or "").strip()
+        sender_id = oa_id
+    else:
+        oa_id = str(data.get("oa_id") or recipient.get("id") or app.config.get("ZALO_OA_ID") or "").strip()
+        sender_id = str(sender.get("id") or data.get("fromuid") or "").strip()
+        customer_id = sender_id
+
     tenant_id = str(
         data.get("tenant_id")
         or request.headers.get("X-Tenant-Id")
@@ -474,31 +527,40 @@ async def zalo_webhook(request):
         or KNOWN_OA_NAME_MAP.get(oa_id)
         or "Zalo OA"
     ).strip()
-    sender = data.get("sender") or {}
-    sender_id = str(sender.get("id") or data.get("fromuid") or "").strip()
     msg_obj = data.get("message") or {}
     msg_id = str(msg_obj.get("msg_id") or "").strip()
     message_text = str(msg_obj.get("text") or "").strip()
 
-    logger.info("Zalo webhook received event=%s oa_id=%s sender=%s", event_name, oa_id, sender_id)
+    logger.info("Zalo webhook received event=%s oa_id=%s sender=%s customer=%s", event_name, oa_id, sender_id, customer_id)
 
     # 1. Handle OA outgoing messages (sent by Bot, or by human staff on Zalo OA Manager / Zalo App)
-    is_oa_event = str(event_name or "").startswith("oa_send_")
     if is_oa_event:
-        customer_id = str(recipient.get("id") or data.get("user_id_by_app") or "").strip()
         if not customer_id:
             return json_response({"status": "received", "event": event_name}, status=200)
 
-        if msg_id and _is_duplicate_message(msg_id):
-            logger.info("Ignored duplicate Zalo OA message msg_id=%s", msg_id)
-            return json_response({"status": "duplicate_skipped"}, status=200)
+        conversation_id = "zalo:{}:{}".format(oa_id or "default", customer_id)
+        if msg_id and (_is_duplicate_message(msg_id) or _is_message_already_in_conversation(conversation_id, msg_id)):
+            logger.info("Ignored duplicate/retry Zalo OA message msg_id=%s conversation=%s", msg_id, conversation_id)
+            return json_response({"status": "duplicate_skipped", "msg_id": msg_id}, status=200)
 
-        # Do not dual-publish to Tinode if message was already sent by ViChat staff
-        if _is_sent_by_vichat(oa_id, customer_id, msg_id, message_text):
-            logger.info("Ignored outgoing Zalo OA webhook already sent by ViChat to %s: %s", customer_id, msg_id or message_text[:20])
+        is_bot = bool(data.get("is_bot") or data.get("from_bot_service") or data.get("from_chatbot"))
+
+        # Do not dual-publish to Tinode if message was already sent by ViChat human staff
+        if not is_bot and _is_sent_by_vichat(oa_id, customer_id, msg_id, message_text):
+            logger.info("Ignored outgoing Zalo OA webhook already sent by ViChat staff to %s: %s", customer_id, msg_id or message_text[:20])
             return json_response({"status": "sent_by_vichat_skipped"}, status=200)
 
-        conversation_id = "zalo:{}:{}".format(oa_id or "default", customer_id)
+        # Parse original timestamp from Zalo webhook to preserve chronological order on retries
+        raw_ts = data.get("timestamp") or (msg_obj.get("timestamp") if isinstance(msg_obj, dict) else None)
+        msg_timestamp = time.time()
+        if raw_ts:
+            try:
+                ts_val = float(raw_ts)
+                msg_timestamp = ts_val / 1000.0 if ts_val > 1e11 else ts_val
+            except Exception:
+                msg_timestamp = time.time()
+        msg_created_at = datetime.utcfromtimestamp(msg_timestamp).isoformat() + "Z"
+
         msg_type = "text"
         img_url = ""
         file_obj = None
@@ -544,8 +606,8 @@ async def zalo_webhook(request):
             "senderId": oa_id,
             "senderName": sender_name,
             "text": message_text or "[Đính kèm]",
-            "createdAt": datetime.utcnow().isoformat() + "Z",
-            "timestamp": time.time(),
+            "createdAt": msg_created_at,
+            "timestamp": msg_timestamp,
             "channel": "zalo_oa",
             "isBot": is_bot,
         }
@@ -584,7 +646,7 @@ async def zalo_webhook(request):
                     "channel": "zalo_oa",
                     "channelType": "zalo_oa",
                     "last_message": message_text or "[Đính kèm]",
-                    "updated_at": time.time(),
+                    "updated_at": msg_timestamp,
                     "tinode_topic": tinode_topic or conv_data.get("tinode_topic"),
                     "tinodeTopic": tinode_topic or conv_data.get("tinodeTopic"),
                 })
@@ -603,7 +665,7 @@ async def zalo_webhook(request):
                     "message": message_text or "[Đính kèm]",
                     "message_id": msg_id,
                     "type": msg_type,
-                    "timestamp": time.time(),
+                    "timestamp": msg_timestamp,
                     "is_bot": is_bot,
                 }
                 if img_url:
@@ -673,9 +735,10 @@ async def zalo_webhook(request):
     if not message_text and not img_url and not file_obj:
         return json_response({"status": "received", "event": event_name}, status=200)
 
-    if msg_id and _is_duplicate_message(msg_id):
-        logger.info("Ignored duplicate Zalo message msg_id=%s", msg_id)
-        return json_response({"status": "duplicate_skipped"}, status=200)
+    conversation_id = "zalo:{}:{}".format(oa_id or "default", sender_id)
+    if msg_id and (_is_duplicate_message(msg_id) or _is_message_already_in_conversation(conversation_id, msg_id)):
+        logger.info("Ignored duplicate/retry Zalo message msg_id=%s conversation=%s", msg_id, conversation_id)
+        return json_response({"status": "duplicate_skipped", "msg_id": msg_id}, status=200)
 
     # Fetch customer profile (display name, avatar, phone, address, gender, tags, notes) if possible
     passed_profile = data.get("user_profile") or {}
@@ -819,6 +882,16 @@ async def zalo_webhook(request):
     except Exception as t_exc:
         logger.warning("Could not get or create Tinode topic for Zalo %s: %s", conversation_id, t_exc)
 
+    raw_cust_ts = data.get("timestamp") or (msg_obj.get("timestamp") if isinstance(msg_obj, dict) else None)
+    cust_msg_timestamp = time.time()
+    if raw_cust_ts:
+        try:
+            c_val = float(raw_cust_ts)
+            cust_msg_timestamp = c_val / 1000.0 if c_val > 1e11 else c_val
+        except Exception:
+            cust_msg_timestamp = time.time()
+    cust_msg_created_at = datetime.utcfromtimestamp(cust_msg_timestamp).isoformat() + "Z"
+
     # Persist customer message to conversation history
     cust_msg = {
         "id": msg_id or "zalo_msg_{}".format(int(time.time() * 1000)),
@@ -827,8 +900,8 @@ async def zalo_webhook(request):
         "senderId": sender_id,
         "senderName": customer_name,
         "text": message_text,
-        "createdAt": datetime.utcnow().isoformat() + "Z",
-        "timestamp": time.time(),
+        "createdAt": cust_msg_created_at,
+        "timestamp": cust_msg_timestamp,
         "channel": "zalo_oa",
     }
     if img_url:
@@ -849,15 +922,16 @@ async def zalo_webhook(request):
 
     # If bot replied (or courtesy message sent), persist bot message to conversation history
     if bot_reply_text:
+        bot_ts = max(cust_msg_timestamp + 0.1, time.time())
         _append_zalo_message(conversation_id, {
-            "id": "bot_{}".format(int(time.time() * 1000)),
+            "id": "bot_{}".format(int(bot_ts * 1000)),
             "type": "text",
             "sender": "outgoing",
             "senderId": "bot",
             "senderName": "Chatbot AI",
             "text": bot_reply_text,
-            "createdAt": datetime.utcnow().isoformat() + "Z",
-            "timestamp": time.time(),
+            "createdAt": datetime.utcfromtimestamp(bot_ts).isoformat() + "Z",
+            "timestamp": bot_ts,
             "isBot": True,
             "channel": "zalo_oa",
         })
@@ -889,7 +963,7 @@ async def zalo_webhook(request):
                 "bot_reply": bot_reply_text or None,
                 "status": status,
                 "needs_human": needs_human,
-                "timestamp": time.time(),
+                "timestamp": cust_msg_timestamp,
                 "type": msg_type,
             }
             if img_url:
@@ -1130,6 +1204,21 @@ async def zalo_send_message_manual(request):
         _set_takeover_active(oa_id, user_id, active=True, ttl=TAKEOVER_TTL_SECONDS)
         _set_handover_pending(oa_id, user_id, active=False)
 
+        if message and redisdb is not None:
+            import hashlib
+            h = hashlib.md5(str(message).strip().encode("utf-8")).hexdigest()
+            try:
+                redisdb.setex("zalo:sent_by_vichat_text:{}:{}:{}".format(oa_id or "default", str(user_id).strip(), h), 300, "1")
+                redisdb.setex("zalo:sent_by_vichat_text:default:{}:{}".format(str(user_id).strip(), h), 300, "1")
+                redisdb.setex("zalo:sent_by_vichat_user_text:{}:{}".format(str(user_id).strip(), h), 300, "1")
+            except Exception as _dedup_err:
+                logger.warning("Failed to record ViChat sent dedup keys in manual send: %s", _dedup_err)
+
+        try:
+            await _notify_chatbot_takeover(oa_id, user_id, "takeover", tenant_id=tenant_id)
+        except Exception as _tb_err:
+            logger.warning("Failed to notify chatbot takeover during manual send: %s", _tb_err)
+
         # Ensure Tinode topic exists
         tinode_topic = ""
         try:
@@ -1151,6 +1240,8 @@ async def zalo_send_message_manual(request):
             logger.warning("Could not get or create Tinode topic for manual send: %s", t_exc)
 
         # Persist agent outgoing message to conversation history
+        msg_created_at = datetime.utcnow().isoformat() + "Z"
+        msg_timestamp = time.time()
         _append_zalo_message(conversation_id, {
             "id": sent_msg_id or "agent_{}".format(int(time.time() * 1000)),
             "type": "text",
@@ -1158,8 +1249,8 @@ async def zalo_send_message_manual(request):
             "senderId": str(data.get("agent_id") or "agent"),
             "senderName": agent_name,
             "text": message,
-            "createdAt": datetime.utcnow().isoformat() + "Z",
-            "timestamp": time.time(),
+            "createdAt": msg_created_at,
+            "timestamp": msg_timestamp,
             "channel": "zalo_oa",
         })
 
@@ -1184,7 +1275,7 @@ async def zalo_send_message_manual(request):
                     "last_message": message,
                     "status": "agent_handling",
                     "needs_human": False,
-                    "updated_at": time.time(),
+                    "updated_at": msg_timestamp,
                     "tinode_topic": tinode_topic or conv_data.get("tinode_topic"),
                     "tinodeTopic": tinode_topic or conv_data.get("tinodeTopic"),
                 })
@@ -1204,11 +1295,16 @@ async def zalo_send_message_manual(request):
                     "agent_name": agent_name,
                     "message": message,
                     "status": "agent_handling",
-                    "timestamp": time.time(),
+                    "createdAt": msg_created_at,
+                    "timestamp": msg_timestamp,
                 }
                 redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
             except Exception as exc:
                 logger.warning("Redis update on send_message failed: %s", exc)
+
+        result["createdAt"] = msg_created_at
+        result["timestamp"] = msg_timestamp
+        result["message_id"] = sent_msg_id
 
     status_code = 200 if result.get("success") else 400
     if not result.get("success") and result.get("needs_auth"):
@@ -1341,23 +1437,41 @@ async def zalo_update_workflow(request):
 
 async def _notify_chatbot_takeover(oa_id: str, user_id: str, action: str, tenant_id: str = ""):
     """Notify external Chatbot engine about human takeover or resume."""
-    chatbot_base = os.getenv("CHATBOT_BASE_URL", "http://chatbot.gonplatform.com").rstrip("/")
+    env_url = os.getenv("CHATBOT_BASE_URL", "").rstrip("/")
+    candidate_bases = [
+        env_url,
+        "http://192.168.80.154:10000",
+        "http://chatbot.gonplatform.com",
+    ]
+    seen = set()
+    targets = []
+    for b in candidate_bases:
+        if b and b not in seen:
+            targets.append(b)
+            seen.add(b)
+
     endpoint = "/api/v1/zalo/bot/pause" if action == "takeover" else "/api/v1/zalo/bot/resume"
-    url = f"{chatbot_base}{endpoint}"
     payload = {
         "oa_id": str(oa_id).strip(),
         "user_id": str(user_id).strip(),
         "sender_id": str(user_id).strip(),
         "tenant_id": str(tenant_id).strip(),
     }
-    try:
-        import aiohttp
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=4)) as session:
-            async with session.post(url, json=payload) as resp:
-                data = await resp.json()
-                logger.info("Notified Chatbot of bot %s for user %s: status=%s resp=%s", action, user_id, resp.status, data)
-    except Exception as exc:
-        logger.warning("Failed to notify Chatbot of %s for user %s: %s", action, user_id, exc)
+    
+    import aiohttp
+    for base in targets:
+        url = f"{base}{endpoint}"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as session:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status < 400:
+                        data = await resp.json()
+                        logger.info("Notified Chatbot of bot %s for user %s via %s: status=%s resp=%s", action, user_id, base, resp.status, data)
+                        return
+                    else:
+                        logger.warning("Chatbot notification returned HTTP %s at %s", resp.status, url)
+        except Exception as exc:
+            logger.warning("Failed to notify Chatbot of %s at %s: %s", action, url, exc)
 
 
 @app.route("/api/v1/zalo/takeover", methods=["POST"])
@@ -1388,6 +1502,23 @@ async def zalo_toggle_takeover(request):
     is_active = (action == "takeover")
     _set_takeover_active(oa_id, user_id, active=is_active)
     _set_handover_pending(oa_id, user_id, active=False)
+
+    if not is_active and redisdb is not None:
+        # Xóa triệt để mọi key liên quan đến takeover/handover trên Redis
+        keys_to_clean = [
+            f"zalo:takeover:{oa_id}:{user_id}",
+            f"zalo:takeover:default:{user_id}",
+            f"zalo:pending_handover:{oa_id}:{user_id}",
+            f"zalo:pending_handover:default:{user_id}",
+            f"takeover:{oa_id}:{user_id}",
+            f"takeover:default:{user_id}",
+        ]
+        try:
+            for k in keys_to_clean:
+                redisdb.delete(k)
+        except Exception as k_exc:
+            logger.warning("Error deleting extra takeover keys: %s", k_exc)
+
     try:
         await _notify_chatbot_takeover(oa_id, user_id, action, tenant_id=tenant_id)
     except Exception as exc:
@@ -1403,6 +1534,19 @@ async def zalo_toggle_takeover(request):
             conv_data["updated_at"] = time.time()
             redisdb.setex("zalo:conversation:{}".format(conversation_id), 86400 * 30, json.dumps(conv_data))
             redisdb.sadd("zalo:conversations:index:{}".format(tenant_id), conversation_id)
+
+            sync_payload = {
+                "event": "takeover_changed",
+                "conversation_id": conversation_id,
+                "oa_id": oa_id,
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "sender_id": user_id,
+                "takeover_active": is_active,
+                "status": "agent_handling" if is_active else "bot_resolved",
+                "timestamp": time.time(),
+            }
+            redisdb.publish("vichat:omnichannel:events", json.dumps(sync_payload))
         except Exception as exc:
             logger.warning("Redis update on takeover failed: %s", exc)
 

@@ -178,10 +178,18 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     );
   }, [(conversation as any)?.takeover_active, (conversation as any)?.status, conversation?.id]);
 
+  const isBotPaused = Boolean(
+    takeoverActive ||
+    (conversation as any)?.takeover_active ||
+    (conversation as any)?.needs_human ||
+    (conversation as any)?.status === 'needs_human' ||
+    (conversation as any)?.status === 'agent_handling'
+  );
+
   const handleToggleTakeover = useCallback(async () => {
     if (takeoverLoading || !conversation) return;
     setTakeoverLoading(true);
-    const nextAction = takeoverActive ? 'release' : 'takeover';
+    const nextAction = isBotPaused ? 'release' : 'takeover';
     const parts = String(conversation.id || '').split(':');
     const oaId = (conversation as any)?.oa_id || (parts.length >= 3 ? parts[1] : 'default');
     const userId = (conversation as any)?.zalo_user_id || (conversation as any)?.userId || (parts.length >= 3 ? parts[2] : conversation.id);
@@ -198,7 +206,7 @@ export function ChatDetailScreen({ route, navigation }: Props) {
     } finally {
       setTakeoverLoading(false);
     }
-  }, [conversation, takeoverActive, takeoverLoading]);
+  }, [conversation, isBotPaused, takeoverLoading]);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [unreadJumpDismissed, setUnreadJumpDismissed] = useState(false);
@@ -1406,20 +1414,20 @@ export function ChatDetailScreen({ route, navigation }: Props) {
             style={[
               styles.zaloBotBtn,
               {
-                backgroundColor: takeoverActive ? '#fff7ed' : '#ecfdf5',
-                borderColor: takeoverActive ? '#fed7aa' : '#a7f3d0',
+                backgroundColor: isBotPaused ? '#fff7ed' : '#ecfdf5',
+                borderColor: isBotPaused ? '#fed7aa' : '#a7f3d0',
               },
             ]}
           >
             <Text
               style={[
                 styles.zaloBotBtnText,
-                { color: takeoverActive ? '#c2410c' : '#047857' },
+                { color: isBotPaused ? '#c2410c' : '#047857' },
               ]}
             >
               {takeoverLoading
                 ? t('Đang xử lý...')
-                : takeoverActive
+                : isBotPaused
                 ? t('Bật lại Bot')
                 : t('Dừng Bot')}
             </Text>
