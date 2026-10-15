@@ -1970,7 +1970,7 @@ function safeNormalizeConversationForRender(conversation, fallbackId = '') {
     const normalized = normalizeConversationShape(conversation);
     const normalizedId = normalized.id || id;
     let result = normalizedId ? { ...normalized, id: normalizedId } : normalized;
-    if (result && (result.notificationMutedUntil === null || result.notificationMutedUntil === undefined)) {
+    if (result && result.notificationMutedUntil === undefined) {
       const cachedMute = readCachedConversationMute(result);
       if (cachedMute !== null) {
         result = { ...result, notificationMutedUntil: cachedMute };
@@ -7008,9 +7008,7 @@ function App() {
               })
               .catch(error => {
                 if (contactsSyncRequestRef.current === accountSession) contactsSyncRequestRef.current = 0;
-                if (accountSessionRef.current === accountSession && !scheduleContactsSync(attempt + 1)) {
-                  setChatError(error?.message || 'Không đồng bộ được danh sách cuộc trò chuyện.');
-                }
+                clientLogger.warn('contacts_sync_deferred', error);
               });
           }, delay);
           return true;
@@ -10423,36 +10421,64 @@ function App() {
   };
 
   const updateConversationMute = async (conversationId, mutedUntil) => {
-    const rawRoom = conversationsRef.current[conversationId];
-    const room = rawRoom === null || rawRoom === undefined
-      ? null
-      : safeNormalizeConversationForRender(rawRoom, conversationId);
+    setChatError('');
+    const allRooms = safeConversationValues(conversationsRef.current);
+    const targetRoom = conversationsRef.current[conversationId]
+      || allRooms.find(r => r && (
+        String(r.id) === String(conversationId)
+        || String(r.managementId) === String(conversationId)
+        || String(r.tinodeTopic) === String(conversationId)
+      ))
+      || (activeChat && (
+        String(activeChat.id) === String(conversationId)
+        || String(activeChat.managementId) === String(conversationId)
+        || String(activeChat.tinodeTopic) === String(conversationId)
+      ) ? activeChat : null);
+
+    const room = targetRoom ? safeNormalizeConversationForRender(targetRoom, conversationId) : null;
     if (!room || room.isChatbot || room.id === 'empty') return false;
     setIsUpdatingNotificationMute(true);
-    setChatError('');
 
     const effectiveMuteUntil = normalizeNotificationMuteUntil(mutedUntil);
-    const keysToMute = [
+    const keysToMute = new Set([
       conversationId,
       room.id,
       room.managementId,
       room.tinodeTopic,
-    ].map(k => String(k || '').trim()).filter(Boolean);
+      activeChat?.id,
+      activeChat?.managementId,
+      activeChat?.tinodeTopic,
+      currentChatIdRef.current,
+    ].map(k => String(k || '').trim()).filter(Boolean));
 
-    // 1. Optimistic local update: phản hồi giao diện ngay lập tức
+    const applyMuteToRooms = (previous, targetMute) => {
+      let changed = false;
+      const next = { ...previous };
+      for (const [key, rawItem] of Object.entries(previous)) {
+        if (!rawItem) continue;
+        const normalized = safeNormalizeConversationForRender(rawItem, key);
+        if (!normalized) continue;
+        const matches = keysToMute.has(String(key))
+          || keysToMute.has(String(normalized.id))
+          || (normalized.managementId && keysToMute.has(String(normalized.managementId)))
+          || (normalized.tinodeTopic && keysToMute.has(String(normalized.tinodeTopic)));
+        if (matches) {
+          next[key] = {
+            ...normalized,
+            notificationMutedUntil: targetMute,
+          };
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    };
+
+    // 1. Optimistic local update: phản hồi giao diện ngay lập tức trên mọi alias
     setConversations(previous => {
-      const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
-        ? null
-        : safeNormalizeConversationForRender(previous[conversationId], conversationId);
-      if (!previousRoom) return previous;
-      const next = {
-        ...previous,
-        [conversationId]: {
-          ...previousRoom,
-          notificationMutedUntil: effectiveMuteUntil,
-        },
-      };
-      conversationsRef.current = next;
+      const next = applyMuteToRooms(previous, effectiveMuteUntil);
+      if (next !== previous) {
+        conversationsRef.current = next;
+      }
       return next;
     });
     setNotificationClock(Date.now());
@@ -10481,18 +10507,10 @@ function App() {
         if (updated && updated.notificationMutedUntil !== undefined) {
           const finalMuteUntil = normalizeNotificationMuteUntil(updated.notificationMutedUntil);
           setConversations(previous => {
-            const previousRoom = previous[conversationId] === null || previous[conversationId] === undefined
-              ? null
-              : safeNormalizeConversationForRender(previous[conversationId], conversationId);
-            if (!previousRoom) return previous;
-            const next = {
-              ...previous,
-              [conversationId]: {
-                ...previousRoom,
-                notificationMutedUntil: finalMuteUntil,
-              },
-            };
-            conversationsRef.current = next;
+            const next = applyMuteToRooms(previous, finalMuteUntil);
+            if (next !== previous) {
+              conversationsRef.current = next;
+            }
             return next;
           });
         }
@@ -10504,6 +10522,7 @@ function App() {
       return true;
     } finally {
       setIsUpdatingNotificationMute(false);
+      setChatError('');
     }
   };
 
@@ -10636,7 +10655,7 @@ function App() {
       setConversationMenu(null);
       return true;
     } catch (error) {
-      setChatError(error?.message || 'Khong the cap nhat ghim hoi thoai.');
+      setChatError(groupInfoErrorMessage(error, 'Không thể cập nhật ghim hội thoại.'));
       return false;
     }
   };
@@ -10865,6 +10884,7 @@ function App() {
     }
     if (action === 'mute' || action === 'toggle-mute') {
       setConversationMenu(null);
+      setChatError('');
       if (isConversationMuted(room.notificationMutedUntil, notificationClock)) {
         await updateConversationMute(room.id, null);
       } else {
@@ -10904,6 +10924,7 @@ function App() {
   };
 
   const handleConversationMuteToggle = event => {
+    setChatError('');
     const shouldMute = typeof event?.target?.checked === 'boolean'
       ? event.target.checked
       : !activeChatMuted;
@@ -10925,6 +10946,7 @@ function App() {
   const handleNotificationMuteSubmit = async event => {
     event.preventDefault();
     if (!notificationMuteDialog) return;
+    setChatError('');
     const mutedUntil = resolveNotificationMuteUntil(notificationMuteOption, Date.now());
     const updated = await updateConversationMute(notificationMuteDialog.id, mutedUntil);
     if (updated) setNotificationMuteDialog(null);

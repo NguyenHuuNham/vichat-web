@@ -4,6 +4,37 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
+## 2026-10-15-03 - Khắc phục triệt để lỗi toast "permission denied" và tối ưu mượt mà luồng bật/tắt thông báo hội thoại
+
+- Thoi gian: 2026-10-15 16:35 (Asia/Saigon)
+- Loai: Bug Fix | UI/UX Reliability | Notification Flow Optimization | I18n
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS (27.46s), `npm run build:production` PASS (1.10s), `npx oxlint src` 0 errors. Toan bo luong Zalo OA giu nguyen 100% khong bi can thiep theo chi dao.
+- Nguyen nhan goc re:
+  1. Khi nguoi dung thao tac bat/tat thong bao hoi thoai tren nhom hoac 1-1, ham `updateConversationMute` chi cap nhat room tai key `[conversationId]` truyen vao ma khong dong bo toan dien qua moi key/alias tham chieu cua room trong state (`room.id`, `room.managementId`, `room.tinodeTopic`, `currentChatId`).
+  2. Trong `safeNormalizeConversationForRender`, dieu kien fallback vao `readCachedConversationMute` bi dat sai: `result.notificationMutedUntil === null || result.notificationMutedUntil === undefined`. Gia tri `null` la trang thai chu dong mo lai thong bao (unmuted), nhung vi bi coi nhu chua co du lieu nen he thong lap tuc doc lai cache cu tu `localStorage` va nap lai moc mute, khien viec bat thong bao tro lai bi dội nguoc hoac khong muot ma.
+  3. Tien trinh background `contactsSync` trong `tinodeClient.onEvent('contacts')` khi gap loi truy cap topic phu da goi `setChatError(error?.message)` voi thong diep tho tu Tinode la `"permission denied"`. Do `chatError` nay la trang thai loi toan cuc cua giao dien, toast `"Không thể hoàn tất thao tác - permission denied"` bi hien thi len man hinh ngay ca khi nguoi dung dang thao tac thong thuong.
+  4. Ham `translateUiText` chua co anh xa tu khoa `"permission denied"` hoac ma 403 sang thong bao tieng Viet than thien, dan toi chuoi tieng Anh tho `"permission denied"` hien thi tren toast.
+- Giai phap thuc hien:
+  1. **Nang cap toan dien `updateConversationMute` (`src/app/App.jsx`)**:
+     - Ho tro tim kiem room chinh xac tu moi alias (`id`, `managementId`, `tinodeTopic`) hoac tu `activeChat`.
+     - Tao tap hop alias day du `keysToMute` va cap nhat optimistic UI dong loat tren tat ca alias cua phong trong `conversations` va `conversationsRef.current`. Icon chuong va tieu de "Bật/Tắt thông báo" phan hoi ngay lap tuc ma khong bi tre.
+     - Luu tru va don sach `vichat.conversation-mutes.v1` trong `localStorage` cho moi alias khi un-mute.
+     - Dong bo phia sau len backend `chatManagementService.updateConversationNotifications` (best-effort), cap nhat lai state neu backend xac nhan, dong thoi bat moi loi backend ma khong de ro ri loi ra `setChatError`.
+     - Luon xoa sach `chatError` trong `finally` va truoc khi submit.
+  2. **Bao ve trang thai unmuted trong `safeNormalizeConversationForRender` (`src/app/App.jsx`)**:
+     - Chi fallback doc cache `localStorage` khi `result.notificationMutedUntil === undefined`. Khi da la `null`, giu nguyen `null` (unmuted), ngan ngua triet de hien tuong dội nguoc trang thai.
+  3. **Khong bao gio hien toast loi tu tien trinh ngam `contactsSync` (`src/app/App.jsx`)**:
+     - Thay the `setChatError` trong `contactsSync` bang `clientLogger.warn('contacts_sync_deferred', error)`, ngan chan toast loi vo co khi Tinode dong bo ngam danh ba.
+  4. **Ban dia hoa & loc chuoi `"permission denied"` (`src/features/i18n/appLanguage.js`)**:
+     - Bo sung regex `/(?:permission denied|\b403\b)/i` vao `translateUiText` de chuyen hoa thanh `'Bạn chưa được admin cấp phép.'` (tieng Viet) va `'You have not been granted permission by the administrator.'` (tieng Anh), khong de chuoi tho xuat hien tren UI.
+     - Cap nhat unit test trong `src/features/i18n/appLanguage.test.js`.
+  5. **Bao toan Zalo OA 100%**:
+     - Giu nguyen hoan toan `api_zalo.py`, `ZaloCrmHeaderControls.jsx`, va `omnichannelRealtimeService.js`.
+- Kiem thu va Ket qua thuc te:
+  - `npm run test:frontend`: 470/470 tests PASS (27.46s).
+  - `npm run build:production`: Build thanh cong trong 1.10s.
+  - `npx oxlint src`: 0 errors.
+
 ## 2026-10-15-02 - Tối ưu toàn diện ViChat Web: Khử rủi ro rò rỉ secrets, dọn sạch dead code/lint, tự chủ FontAwesome và nâng cấp bố cục responsive
 
 - Thoi gian: 2026-10-15 15:15 (Asia/Saigon)

@@ -209,6 +209,8 @@ test('translates the new private Cloud and popup messages', () => {
   );
   assert.equal(translateUiText('Thông báo mới', 'en'), 'New notification');
   assert.equal(translateUiText('Không thể hoàn tất thao tác', 'en'), 'Unable to complete the action');
+  assert.equal(translateUiText('permission denied', 'vi'), 'Bạn chưa được admin cấp phép.');
+  assert.equal(translateUiText('permission denied', 'en'), 'You have not been granted permission by the administrator.');
   assert.equal(translateUiText('Đã lưu 2 file riêng tư vào Cloud của tôi.', 'en'), 'Saved 2 private files to My cloud.');
   assert.equal(translateUiText('Đã xóa file khỏi Cloud của tôi.', 'en'), 'Removed the file from My cloud.');
 });

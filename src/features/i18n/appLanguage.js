@@ -499,6 +499,7 @@ const ENGLISH_UI_TEXT = Object.freeze({
   'Bạn chưa được cấp quyền đổi tên nhóm.': 'You do not have permission to rename this group.',
   'Bạn chưa được cấp quyền đổi ảnh nhóm.': 'You do not have permission to change this group image.',
   'Bạn chưa được admin cấp phép.': 'You have not been granted permission by the administrator.',
+  'permission denied': 'You have not been granted permission by the administrator.',
   'Tên nhóm không được để trống.': 'The group name cannot be empty.',
   'Chatmgt chưa xác nhận nhóm này.': 'Chatmgt has not confirmed this group.',
   'Đã lưu thiết lập quản lý nhóm.': 'Group management settings were saved.',
@@ -1158,7 +1159,13 @@ const ENGLISH_PATTERN_TRANSLATIONS = [
 ];
 
 export function translateUiText(value, language = 'vi') {
-  if (language !== 'en' || typeof value !== 'string') return value;
+  if (typeof value !== 'string') return value;
+  if (/(?:permission denied|\b403\b)/i.test(value)) {
+    return language === 'en'
+      ? 'You have not been granted permission by the administrator.'
+      : 'Bạn chưa được admin cấp phép.';
+  }
+  if (language !== 'en') return value;
   if (Object.prototype.hasOwnProperty.call(ENGLISH_UI_TEXT, value)) return ENGLISH_UI_TEXT[value];
   for (const [pattern, translate] of ENGLISH_PATTERN_TRANSLATIONS) {
     const match = value.match(pattern);
