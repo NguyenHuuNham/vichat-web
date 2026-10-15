@@ -34,7 +34,7 @@ test('uses the selected locale for workspace date fallbacks', () => {
 });
 
 test('normalizes extended task with collaborator, approver, subtasks and relationships', async () => {
-  const { normalizeTaskExtended, getDueStatus, filterWorkspaceTasks, groupWorkspaceTasks } = await import('./enterpriseWorkspaceService.js');
+  const { normalizeTaskExtended, filterWorkspaceTasks, groupWorkspaceTasks } = await import('./enterpriseWorkspaceService.js');
   const accounts = [
     { id: 'u-boss', name: 'Sếp Cường', department: 'Ban Giám Đốc' },
     { id: 'u-dev', name: 'Nguyễn Văn A', department: 'Kỹ Thuật' },

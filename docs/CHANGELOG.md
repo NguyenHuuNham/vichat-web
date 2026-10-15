@@ -4,6 +4,42 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
+## 2026-10-15-02 - Tối ưu toàn diện ViChat Web: Khử rủi ro rò rỉ secrets, dọn sạch dead code/lint, tự chủ FontAwesome và nâng cấp bố cục responsive
+
+- Thoi gian: 2026-10-15 15:15 (Asia/Saigon)
+- Loai: Security Hardening | Dead Code Removal | Lint Cleanup | Asset Self-Hosting | UI Responsive Optimization
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS (13.79s), `npm run build` PASS (1.07s), `npx oxlint src` 0 errors. Toan bo luong va logic Zalo OA giu nguyen 100% khong bi can thiep theo dung chi dao.
+- Nguyen nhan goc re & Van de duoc xu ly:
+  1. **Bao mat & Git Hygiene**: 17 file script untracked trong `scripts/` chua thong tin ket noi noi bo/debug can duoc di chuyen an toan khoi repo va chan boi `.gitignore`.
+  2. **Ma chet (Dead Code)**: `src/App.jsx` (~771 dong) va `src/components/Login.jsx` la code mau prototype cu, khong con duoc import hay su dung boi ung dung chinh (`src/app/App.jsx`).
+  3. **Phu thuoc CDN ngoai**: FontAwesome 6.4.0 tai tu `cdnjs.cloudflare.com` gay rui ro mat icon khi mang noi bo chan hoac ket noi quoc te chap chon.
+  4. **Canh bao Linter tren Web**: Canh bao bien/catch parameter `_` khong dung trong `src/app/App.jsx`, prop thua trong `CompanyStaffMatrixView.jsx`, va import thua trong `enterpriseWorkspaceService.test.js`.
+  5. **Bo cuc Responsive tren Laptop**: Khi man hinh $\le 1280\text{px}$, viec mo dong thoi 4 cot lam khung chat chinh bi co hep duoi 400px.
+- Giai phap thuc hien:
+  1. **Bao ve Secrets & Don dep Repo**:
+     - Di chuyen 17 script debug ra thu muc an toan `D:\vichat-build\scripts_backup_debug\`.
+     - Cap nhat `.gitignore` chan vinh vien: `scripts/check_*`, `scripts/inspect_*`, `scripts/remote_cmd.sh`, `scripts/test_webhook_*.py`, `scripts/fetch_api_*.py`, `scripts/run_inspect.sh`, `scripts/*.tmp.*`.
+     - Chay `git worktree prune` don sach cac ban ghi worktree cu.
+  2. **Loai bo Ma chet**:
+     - Xoa an toan `src/App.jsx` va `src/components/Login.jsx`. Bao toan `src/components/ConfirmDialog.jsx` vi dang duoc su dung hop le.
+  3. **Tu chu Tai nguyen Web (Self-host FontAwesome)**:
+     - Cai dat va tich hop `@fortawesome/fontawesome-free` vao bundle Vite qua `src/main.jsx`.
+     - Loai bo link CDN ngoai trong `index.html`.
+     - Cap nhat test kiem thu trong `src/features/chat/services/chatManagementService.test.js` de xac nhan FontAwesome duoc dong goi cuc bo qua `main.jsx`.
+  4. **Lam sach 100% Canh bao Lint Web**:
+     - `src/features/workspace/services/enterpriseWorkspaceService.test.js`: Loai bo `getDueStatus` khong su dung.
+     - `src/features/workspace/components/CompanyStaffMatrixView.jsx`: Loai bo prop `onRemindTask` khong su dung.
+     - `src/app/App.jsx`: Thay `catch (_)` thanh `catch {}` va loai bo `isCreatingGroup` khoi dependency array cua `useCallback`.
+  5. **Nang cap Bo cuc Giao dien Responsive (`src/styles/index.css`)**:
+     - Bo sung breakpoint $\le 1280\text{px}$: Tu dong thu gon `sidebar-primary` xuong che do mini 76px de giai phong them 108px chieu ngang cho Khung chat chinh.
+     - Bo sung breakpoint $\le 1150\text{px}$: Chuyen `sidebar-detail` sang che do overlay drawer de tranh ep khung chat co cum.
+  6. **Bao toan Zalo OA 100%**:
+     - Khong thay doi logic, API, controller hay component Zalo OA nao (`api_zalo.py`, `ZaloCrmHeaderControls.jsx`, `omnichannelRealtimeService.js` giu nguyen 100%).
+- Kiem thu va Ket qua thuc te:
+  - `npm run test:frontend`: 470/470 tests PASS (13.79s).
+  - `npm run build`: Vite build production thanh cong trong 1.07s, dong goi toan bo font assets FontAwesome (`.woff2`) cuc bo.
+  - `npx oxlint src`: 0 errors.
+
 ## 2026-10-15-01 - Phục hồi hiển thị nút Danh bạ, Tạo nhóm mới và Ô tìm kiếm trên giao diện ViChat Web
 
 - Thoi gian: 2026-10-15 10:20 (Asia/Saigon)

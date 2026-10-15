@@ -1960,7 +1960,7 @@ function readCachedConversationMute(room) {
         if (val !== null && isConversationMuted(val)) return val;
       }
     }
-  } catch (_) {}
+  } catch {}
   return null;
 }
 
@@ -10468,7 +10468,7 @@ function App() {
         }
       });
       window.localStorage?.setItem('vichat.conversation-mutes.v1', JSON.stringify(storedMutes));
-    } catch (_) {}
+    } catch {}
 
     // 3. Best-effort sync to Chatmgt backend
     try {
@@ -15301,7 +15301,6 @@ function App() {
     groupMemberMenuId,
     imageViewer,
     isConversationBackgroundOpen,
-    isCreatingGroup,
     isCreateGroupOpen,
     isCreatingPoll,
     isDetailOpen,

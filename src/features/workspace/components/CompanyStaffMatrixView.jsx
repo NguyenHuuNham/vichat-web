@@ -24,7 +24,6 @@ export default function CompanyStaffMatrixView({
   onSelectTask,
   onToggleComplete,
   onOpenChat,
-  onRemindTask,
   copy = { t: text => text },
 }) {
   const [filterMode, setFilterMode] = useState('ALL'); // 'ALL' | 'OVERDUE_ONLY' | 'IDLE_STAFF'

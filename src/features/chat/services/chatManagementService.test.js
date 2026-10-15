@@ -26,6 +26,7 @@ const legacyStylesSource = readFileSync(new URL('../../../index.css', import.met
 const stylesSource = readFileSync(new URL('../../../styles/index.css', import.meta.url), 'utf8');
 const managementStylesSource = readFileSync(new URL('../../management/management.css', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../../../../index.html', import.meta.url), 'utf8');
+const mainSource = readFileSync(new URL('../../../main.jsx', import.meta.url), 'utf8');
 const productionNginxSource = readFileSync(new URL('../../../../infrastructure/production/nginx.conf', import.meta.url), 'utf8');
 const tinodeSource = readFileSync(new URL('./tinodeClient.js', import.meta.url), 'utf8');
 const avatarCropSource = readFileSync(new URL('../../contacts/components/AvatarCropModal.jsx', import.meta.url), 'utf8');
@@ -587,8 +588,7 @@ test('keeps local font fallbacks and renders a green indicator only for online p
   assert.match(managementStylesSource, /--mgmt-font-body:\s*Inter, "Segoe UI", sans-serif/);
   assert.match(rootAppSource, /fontFamily:\s*'system-ui, sans-serif'/);
   assert.doesNotMatch(indexSource, /fonts\.googleapis\.com/);
-  assert.match(indexSource, /cdnjs\.cloudflare\.com\/ajax\/libs\/font-awesome\/6\.4\.0\/css\/all\.min\.css/);
-  assert.match(indexSource, /integrity="sha512-/);
+  assert.match(mainSource, /@fortawesome\/fontawesome-free\/css\/all\.min\.css/);
   assert.match(stylesSource, /\.chat-header-status\.direct-presence\.online::before/);
   assert.match(appSource, /formatOfflineDuration/);
   assert.match(appSource, /isCurrentUserOnline \? 'Trực tuyến' : 'Ngoại tuyến'/);

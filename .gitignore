@@ -50,4 +50,12 @@ deploy-*.sh
 verify-*.sh
 build_apk_*.bat
 scripts/deploy-*.sh
+scripts/check_*
+scripts/inspect_*
+scripts/remote_cmd.sh
+scripts/test_webhook_*.py
+scripts/fetch_api_*.py
+scripts/run_inspect.sh
+scripts/*.tmp.*
 #
+
