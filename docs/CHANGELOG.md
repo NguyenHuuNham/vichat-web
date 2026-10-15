@@ -30,6 +30,8 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
      - Cap nhat unit test trong `src/features/i18n/appLanguage.test.js`.
   5. **Bao toan Zalo OA 100%**:
      - Giu nguyen hoan toan `api_zalo.py`, `ZaloCrmHeaderControls.jsx`, va `omnichannelRealtimeService.js`.
+  6. **Git Hygiene & Clean Repository**:
+     - Xóa hoàn toàn file `SKILL.md` khỏi Git tracking và bổ sung `SKILL.md`, `.agents/` vào `.gitignore` để bảo đảm repository hoàn toàn sạch sẽ, không đẩy file rác/skill files lên Git hay máy chủ.
 - Kiem thu va Ket qua thuc te:
   - `npm run test:frontend`: 470/470 tests PASS (27.46s).
   - `npm run build:production`: Build thanh cong trong 1.10s.

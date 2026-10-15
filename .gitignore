@@ -56,6 +56,5 @@ scripts/remote_cmd.sh
 scripts/test_webhook_*.py
 scripts/fetch_api_*.py
 scripts/run_inspect.sh
-scripts/*.tmp.*
-#
-
+SKILL.md
+.agents/
