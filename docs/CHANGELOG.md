@@ -42,6 +42,13 @@ Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat
   - `npm run test:frontend`: 470/470 tests PASS (33.24s).
   - `npm run build:production`: Build thành công trong 0.81s.
   - `npx oxlint src`: 0 errors.
+- Triển khai Production Server:
+  - Commit & Push: `06a77d4` ("fix(chat): resolve contacts tinode connection timeout and prevent cascading realtime failures") đã push lên `origin/master`.
+  - Tuyến kết nối: SSH jump `ubuntu@103.74.122.206` -> server đích `ubuntu@192.168.80.20` (`chat-server`).
+  - Deploy Frontend: Gói `dist-upload.tar.gz` được chuyển lên server, cập nhật `/usr/share/nginx/html/` trong container `songhong-production-chat-1` và `/opt/deploy/chat/current/dist`, Nginx test & reload thành công (assets mới `/assets/index-BWTSLYYe.js`, `/assets/index-BScrP9HC.css`).
+  - Deploy Backend: Gói `backend-upload.tar.gz` cập nhật `api_chat_management.py` vào container `songhong-production-chatmgt-1` và `/opt/deploy/chat/current/chatservice-main`, biên dịch cú pháp Python thành công.
+  - Khởi động lại `songhong-production-chatmgt-1`, container chuyển từ trạng thái treo cũ `unhealthy` sang `healthy` 100%.
+  - Xác minh thành công: `https://chat.gonplatform.com/healthz` trả về `200 OK`, `https://chatmgt.gonplatform.com/api/v1/auth/health` trả về `{"status":"ok",...}`.
 
 ## 2026-10-15-03 - Khắc phục triệt để lỗi toast "permission denied" và tối ưu mượt mà luồng bật/tắt thông báo hội thoại
 
