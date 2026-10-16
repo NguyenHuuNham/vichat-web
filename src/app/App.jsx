@@ -1864,7 +1864,7 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
     // Reconcile pending optimistic outgoing message with its server copy by text content
     if (index === undefined && message.sender === 'outgoing' && !message.isBot && message.text && !message.recalled) {
       index = merged.findIndex(candidate => {
-        if (!candidate.pending && !String(candidate.id || '').startsWith('temp_') && !String(candidate.id || '').startsWith('local_')) {
+        if (!candidate.pending && !String(candidate.id || '').startsWith('temp_') && !String(candidate.id || '').startsWith('local_') && !String(candidate.id || '').startsWith('me-')) {
           return false;
         }
         return candidate.sender === 'outgoing' && !candidate.isBot && candidate.text === message.text;
@@ -1926,12 +1926,20 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
   return merged
     .map((message, index) => ({ message, index }))
     .sort((first, second) => {
+      const firstSeq = Number.isFinite(first.message?.seq) && first.message.seq > 0 ? Number(first.message.seq) : null;
+      const secondSeq = Number.isFinite(second.message?.seq) && second.message.seq > 0 ? Number(second.message.seq) : null;
+      if (firstSeq !== null && secondSeq !== null && firstSeq !== secondSeq) {
+        return firstSeq - secondSeq;
+      }
+      if (first.message?.pending && !second.message?.pending && first.index < second.index) {
+        return -1;
+      }
+      if (second.message?.pending && !first.message?.pending && second.index < first.index) {
+        return 1;
+      }
       const firstTime = messageTimestamp(first.message);
       const secondTime = messageTimestamp(second.message);
       if (firstTime && secondTime && firstTime !== secondTime) return firstTime - secondTime;
-      if (Number.isFinite(first.message?.seq) && Number.isFinite(second.message?.seq) && first.message.seq !== second.message.seq) {
-        return first.message.seq - second.message.seq;
-      }
       return first.index - second.index;
     })
     .map(item => item.message);

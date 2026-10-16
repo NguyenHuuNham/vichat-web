@@ -4,6 +4,26 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
+## 2026-10-16-02 - Khắc phục lỗi đảo ngược thứ tự tin nhắn hỏi/đáp (tin nhắn người dùng bị đẩy xuống sau câu trả lời của Bot)
+
+- Thoi gian: 2026-10-16 10:32 (Asia/Saigon)
+- Loai: Bug Fix | UI/UX Reliability | Realtime Ordering | Message Synchronization
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS (14.14s), `npm run build:production` PASS (1.03s), bundle mới `index-Ba4U1fzh.js` đã deploy và reload Nginx thành công trên server `192.168.80.20`.
+- Nguyen nhan goc re:
+  1. Trong `src/app/App.jsx`, hàm `mergeTinodeMessages` thực hiện sắp xếp tin nhắn bằng cách so sánh `messageTimestamp(first.message)` với `messageTimestamp(second.message)` trước khi xét đến số thứ tự tuần tự `seq` của Tinode (`if (firstTime && secondTime && firstTime !== secondTime) return firstTime - secondTime;`).
+  2. Do đồng hồ máy tính của người dùng (client PC) có thể nhanh hơn đồng hồ server Linux vài giây (hoặc vài trăm mili-giây), khi người dùng gửi tin nhắn (optimistic `createdAt` lấy theo giờ client), bot nhận được và trả lời ngay lập tức (với server timestamp của Tinode). Khi hai tin nhắn được hợp nhất vào giao diện, do timestamp client lớn hơn timestamp server, hàm sắp xếp đã đặt nhầm câu trả lời của bot lên trước câu hỏi của người dùng, bỏ qua hoàn toàn số thứ tự tuần tự chuẩn `seq` của Tinode (ví dụ câu hỏi có `seq=1`, câu trả lời có `seq=2`).
+  3. Khi tin nhắn gửi đi có ID dạng `me-...` (do `App.jsx` sinh ra), hàm reconciliation tìm kiếm bản sao server chỉ kiểm tra `candidate.id` bắt đầu bằng `temp_` hoặc `local_`, bỏ sót tiền tố `me-`, làm giảm độ chính xác khi thay thế tin nhắn tạm.
+- Giai phap thuc hien:
+  1. Cập nhật hàm `mergeTinodeMessages` trong `src/app/App.jsx`:
+     - Ưu tiên tuyệt đối số thứ tự tuần tự `seq` của Tinode làm tiêu chí sắp xếp hàng đầu: nếu cả hai tin nhắn đều có `seq > 0` và khác nhau, trả về `firstSeq - secondSeq`. Điều này đảm bảo câu hỏi luôn luôn đứng trước câu trả lời bất kể lệch đồng hồ client/server.
+     - Bảo vệ tin nhắn đang gửi (pending optimistic): nếu một tin nhắn đang ở trạng thái pending và được tạo trước tin nhắn đến trong phiên làm việc (`first.index < second.index`), giữ nguyên vị trí đứng trước câu trả lời.
+     - Bổ sung tiền tố `me-` vào điều kiện reconcile tin nhắn gửi đi với server echo.
+- Kiem thu va Ket qua thuc te:
+  - Frontend tests: 470/470 PASS (14.14s).
+  - Production build: `npm run build:production` PASS (1.03s).
+  - Deploy server: Đã tải gói `dist-upload.tar.gz` lên server `192.168.80.20`, reload Nginx container `songhong-production-chat-1` thành công.
+
+
 ## 2026-10-16-01 - Khắc phục triệt để lỗi danh bạ không kết nối Tinode, chặn đứng timeout "Management service request timed out" và bảo vệ liên lạc đa chức năng
 
 - Thoi gian: 2026-10-16 09:55 (Asia/Saigon)
