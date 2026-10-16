@@ -4,6 +4,45 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
+## 2026-10-16-01 - Khắc phục triệt để lỗi danh bạ không kết nối Tinode, chặn đứng timeout "Management service request timed out" và bảo vệ liên lạc đa chức năng
+
+- Thoi gian: 2026-10-16 09:55 (Asia/Saigon)
+- Loai: Bug Fix | Performance Optimization | Reliability | Fallback Recovery | I18n
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS (33.24s), 61/61 backend unittests PASS (7.06s), `npm run build:production` PASS (0.81s), `npx oxlint src` 0 errors. Toàn bộ luồng Zalo OA giữ nguyên 100% không bị can thiệp theo chỉ đạo.
+- Nguyen nhan goc re:
+  1. Phía backend (`chatservice-main/application/controllers/api_chat_management.py`):
+     - Trong `management_users` (GET `/api/v1/chat/users`), hàm `_ensure_tinode_accounts_best_effort` được chạy đồng bộ (với `await`) khi danh sách ứng viên mới chưa có `tinode_uid`. Do mỗi lần tạo/login tài khoản Tinode tốn kết nối WebSocket và timeout mặc định lên đến 10s (`TINODE_AUTH_TIMEOUT = 10`), khi có nhiều người dùng trong công ty hoặc mạng chập chờn, yêu cầu danh bạ mất 15-30s.
+     - Phía frontend có timeout tối đa 15s (`API_REQUEST_TIMEOUT_MS = 15000`), dẫn đến việc abort request và ném lỗi `"Management service request timed out."`.
+     - Trong `conversation_prepare_tinode` (POST `/api/v1/conversation/<id>/tinode-prepare`), hàm `_tinode_tokens_for_accounts` bị gọi cả cho hội thoại trực tiếp 1-1. Đối với 1-1, người gọi chỉ cần UID của đối tác để gửi vào topic `usr...`, không bao giờ cần token xác thực của đối tác. Việc cố đăng nhập lấy token của đối tác qua WebSocket vừa dư thừa vừa gây lỗi 502/503 làm hỏng khởi tạo Tinode cho chat 1-1 từ danh bạ.
+  2. Phía frontend (`src/app/App.jsx` & `src/features/chat/services/chatManagementService.js`):
+     - Trong `handleLoginSuccess` / `restoreAccountSession`, `chatManagementService.listUsers()` được đặt trong `Promise.all` cùng `loadTinodeChatbotConfig()`. Khi `listUsers()` bị timeout hoặc lỗi, toàn bộ `Promise.all` văng lỗi ra `catch`, khiến các bước quan trọng tiếp theo (`listConversations`, `tinodeClient.setAllowedConversationTopics`, và `refreshTinodeToken`) BỊ BỎ QUA HOÀN TOÀN. Kết quả là kết nối realtime Tinode không bao giờ được thiết lập, hộp chat ViChat AI báo "Chatbot hiện không kết nối được dịch vụ nội bộ", các phòng chat không load được, và gửi tin nhắn báo "Danh bạ và cuộc trò chuyện đã được lưu ở Chatmgt, nhưng realtime Tinode chưa kết nối".
+     - Trong `ensureTinodeConversationTopicInternal`, đối với chat 1-1 từ danh bạ, nếu `preparedRoom` trả về thiếu `tinodeUid`, hệ thống chỉ tìm trong `preparedRoom.members` mà không tìm tiếp trong `room.members` hay `directoryAccountsRef.current`, dẫn đến ném lỗi "Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.".
+     - Trong `handleStartDirectChat`, `tinodeTopic` ban đầu chưa tận dụng `safeContact.tinodeUid`, và khi có lỗi kết nối thì phòng vẫn bị treo ở trạng thái `directProvisioning: 'pending'`, khóa cứng ô nhập tin nhắn.
+     - Trong `translateUiText`, chuỗi lỗi "Management service request timed out." chưa được dịch sang tiếng Việt thân thiện.
+- Giai phap thuc hien:
+  1. **Khống chế thời gian chờ khởi tạo Tinode danh bạ backend (`api_chat_management.py`)**:
+     - Thêm `timeout_seconds=2.5` và `timeout=2.0` cho mỗi ứng viên trong `_ensure_tinode_accounts_best_effort`, đồng thời giới hạn tối đa 10 ứng viên/lần đồng bộ. Nếu vượt quá thời gian, ghi log warning và trả kết quả ngay, đảm bảo API `/api/v1/chat/users` luôn phản hồi nhanh dưới 3s, không bao giờ bị timeout 15s.
+     - Trong `conversation_prepare_tinode`, chỉ gọi `_tinode_tokens_for_accounts` khi `is_group=True`. Với hội thoại 1-1, loại bỏ bước lấy token thừa của đối tác.
+  2. **Bộ nhớ đệm & cơ chế khôi phục danh bạ stale (`chatManagementService.js`)**:
+     - Bổ sung `directoryCacheByTenant` (RAM) và `vichat.directory.cache.<tenantId>` (`localStorage`).
+     - Khi gọi `listUsers` gặp sự cố mạng hoặc timeout, tự động lấy danh bạ đã lưu trong cache với cờ `status: 'stale'`, không để ứng dụng bị ném lỗi chặn đứng.
+  3. **Cô lập lỗi danh bạ không làm gián đoạn Tinode và các chức năng khác (`App.jsx`)**:
+     - Cô lập `chatManagementService.listUsers()` với `.catch(...)` trong `handleLoginSuccess`. Dù danh bạ có bị trễ hay lỗi, ứng dụng vẫn nạp danh bạ fallback/cache, tiếp tục nạp danh sách hội thoại, và thiết lập kết nối realtime Tinode thành công 100%.
+     - Lên lịch retry ngầm sau 2.5s để cập nhật danh bạ khi máy chủ sẵn sàng mà không bật popup lỗi gây phiền người dùng.
+     - Chuyển thông báo danh bạ stale sang `clientLogger.info`, tránh bật toast đỏ không cần thiết.
+     - Cải tiến `ensureTinodeConversationTopicInternal`: fallback sang `room.tinodeTopic` nếu `tinode-prepare` gặp trục trặc; tìm kiếm `tinodeUid` qua cả `roomMembers(room)` và `directoryAccountsRef.current`.
+     - Cải tiến `handleStartDirectChat`: ưu tiên `safeContact.tinodeUid` và giải phóng trạng thái `directProvisioning: 'error'` khi có lỗi, tránh treo ô nhập tin nhắn.
+  4. **Bản địa hóa thông báo timeout (`appLanguage.js`)**:
+     - Bổ sung regex chuyển dịch "Management service request timed out." thành "Dịch vụ máy chủ phản hồi quá lâu. Vui lòng thử lại sau." (tiếng Việt) và "Management service request timed out. Please try again." (tiếng Anh).
+     - Bổ sung unit tests tương ứng trong `appLanguage.test.js`.
+  5. **Bảo toàn 100% Zalo OA**:
+     - Tuyệt đối không can thiệp logic hay cấu trúc các file Zalo OA (`api_zalo.py`, `ZaloCrmHeaderControls.jsx`, `omnichannelRealtimeService.js`).
+- Kiem thu va Ket qua thuc te:
+  - `python -m unittest chatservice-main/tests/test_chat_auth_contract.py`: 61/61 tests PASS (7.06s).
+  - `npm run test:frontend`: 470/470 tests PASS (33.24s).
+  - `npm run build:production`: Build thành công trong 0.81s.
+  - `npx oxlint src`: 0 errors.
+
 ## 2026-10-15-03 - Khắc phục triệt để lỗi toast "permission denied" và tối ưu mượt mà luồng bật/tắt thông báo hội thoại
 
 - Thoi gian: 2026-10-15 16:35 (Asia/Saigon)

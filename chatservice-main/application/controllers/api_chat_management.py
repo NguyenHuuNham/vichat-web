@@ -1378,19 +1378,33 @@ async def _group_owner_tinode_credentials(item, participants=None, accounts_by_i
     return owner_account, owner_uid, owner_token
 
 
-async def _ensure_tinode_accounts_best_effort(accounts, concurrency=8):
+async def _ensure_tinode_accounts_best_effort(accounts, concurrency=8, timeout_seconds=2.5):
     """Provision newly discovered Account users without blocking directory reads."""
-    account_list = [account for account in accounts if account.active and not account.tinode_uid]
+    account_list = [account for account in accounts if account.active and not account.tinode_uid][:10]
+    if not account_list:
+        return {}, []
     semaphore = asyncio.Semaphore(max(1, int(concurrency)))
 
     async def prepare(account):
         async with semaphore:
             try:
-                return str(account.id), await _ensure_tinode_account(account), None
+                uid = await asyncio.wait_for(_ensure_tinode_account(account), timeout=2.0)
+                return str(account.id), uid, None
             except Exception as error:
                 return str(account.id), "", error
 
-    results = await asyncio.gather(*(prepare(account) for account in account_list))
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*(prepare(account) for account in account_list)),
+            timeout=float(timeout_seconds),
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Tinode best-effort provisioning timed out after %ss for %d candidates",
+            timeout_seconds,
+            len(account_list),
+        )
+        return {}, []
     prepared = {account_id: uid for account_id, uid, error in results if uid}
     errors = [(account_id, error) for account_id, uid, error in results if error]
     return prepared, errors
@@ -5900,15 +5914,17 @@ async def conversation_prepare_tinode(request, conversation_id):
         if current_user.get("auth_method") == "account_sso":
             await _validated_account_identity(request, account)
         _restore_legacy_direct_memberships(item)
-        if not bool((item.properties or {}).get("is_group")):
+        is_group = bool((item.properties or {}).get("is_group"))
+        if not is_group:
             _clear_direct_deleted_marker(item, user_id)
         _participants, accounts_by_id = _active_conversation_accounts(item)
         prepared_uids = await _ensure_tinode_accounts(accounts_by_id.values())
-        await _tinode_tokens_for_accounts(
-            accounts_by_id,
-            list(accounts_by_id),
-            prepared_uids,
-        )
+        if is_group:
+            await _tinode_tokens_for_accounts(
+                accounts_by_id,
+                list(accounts_by_id),
+                prepared_uids,
+            )
         db.session.commit()
         return json(_serialize_conversation(item, user_id))
     except AccountSSOError as error:

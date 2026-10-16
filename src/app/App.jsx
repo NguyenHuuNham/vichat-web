@@ -6574,8 +6574,14 @@ function App() {
       || !String(room?.tinodeTopic || '').trim();
 
     if (shouldPrepare) {
-      preparedRoom = await chatManagementService.prepareTinodeConversation(managementConversationId);
-      if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+      try {
+        preparedRoom = await chatManagementService.prepareTinodeConversation(managementConversationId);
+        if (accountSessionRef.current !== accountSession) throw new Error('Phiên tài khoản đã thay đổi.');
+      } catch (prepareError) {
+        if (!room?.tinodeTopic) throw prepareError;
+        clientLogger.warn('tinode_prepare_fallback_to_room_topic', prepareError);
+        preparedRoom = room;
+      }
     }
     let topicName = resolvePreparedTinodeTopic(
       room,
@@ -6604,8 +6610,13 @@ function App() {
       createdGroupAvatar = created.avatarUrl || '';
     } else if (!topicName) {
       const contact = roomMembers(preparedRoom)
-        .find(member => String(member?.id || '') !== String(managementUserId));
+        .find(member => String(member?.id || '') !== String(managementUserId))
+        || roomMembers(room).find(member => String(member?.id || '') !== String(managementUserId));
       topicName = contact?.tinodeUid || contact?.tinode_uid || '';
+      if (!topicName && contact?.id) {
+        const directoryContact = findAccount(directoryAccountsRef.current, contact.id);
+        topicName = directoryContact?.tinodeUid || directoryContact?.tinode_uid || '';
+      }
     }
 
     if (!topicName) throw new Error('Chatmgt chưa gắn topic Tinode cho cuộc trò chuyện này.');
@@ -7655,11 +7666,22 @@ function App() {
       return;
     }
     try {
-        rememberAvatarOverride(user, user.avatar);
-        const [directoryPage, tinodeChatbotConfig] = await Promise.all([
-          chatManagementService.listUsers(),
+        let directoryPage = null;
+        let directoryFailed = false;
+        const [loadedDirectoryPage, tinodeChatbotConfig] = await Promise.all([
+          chatManagementService.listUsers().catch(error => {
+            directoryFailed = true;
+            clientLogger.warn('initial_directory_load_deferred', error);
+            const fallbackAccounts = filterAccountsByTenant(directoryAccountsRef.current || [], user);
+            return Object.assign(fallbackAccounts.length > 0 ? fallbackAccounts : [user], {
+              nextCursor: null,
+              hasMore: false,
+              total: fallbackAccounts.length > 0 ? fallbackAccounts.length : 1,
+            });
+          }),
           loadTinodeChatbotConfig(),
         ]);
+        directoryPage = loadedDirectoryPage;
         const tinodeChatbotEnabled = applyTinodeChatbotConfig(tinodeChatbotConfig);
         const chatbotRoom = createChatbotConversation(
           loadChatbotMessages({
@@ -7684,7 +7706,7 @@ function App() {
         setDirectoryNextCursor(directoryNextCursorRef.current);
         setDirectoryHasMore(Boolean(directoryPage?.hasMore ?? directoryNextCursorRef.current));
         if (chatManagementService.directorySync?.status === 'stale') {
-          setChatError('Account đang tạm thời không trả được danh bạ mới; Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
+          clientLogger.info('directory_sync_stale', 'Chatmgt đang hiển thị dữ liệu đồng bộ gần nhất.');
         }
         const managed = await chatManagementService.listConversations({
           userId: managementUserId,
@@ -7743,6 +7765,28 @@ function App() {
               || 'Dữ liệu Chatmgt đã sẵn sàng nhưng kết nối realtime Tinode đang tạm gián đoạn.'
             ));
           }
+        }
+        if (directoryFailed) {
+          setTimeout(() => {
+            if (accountSessionRef.current !== accountSession) return;
+            chatManagementService.listUsers().then(refreshedPage => {
+              if (accountSessionRef.current !== accountSession) return;
+              const refreshedAccounts = filterAccountsByTenant(
+                mergeDirectoryAccountSnapshots([user], refreshedPage),
+                user,
+              ).map(account => ({
+                ...account,
+                avatar: isAccountManaged(account) ? (account.avatar || '') : (avatarOverrideFor(account) || account.avatar || ''),
+              }));
+              directoryAccountsRef.current = refreshedAccounts;
+              setDirectoryAccounts(refreshedAccounts);
+              directoryNextCursorRef.current = refreshedPage?.nextCursor || null;
+              setDirectoryNextCursor(directoryNextCursorRef.current);
+              setDirectoryHasMore(Boolean(refreshedPage?.hasMore ?? directoryNextCursorRef.current));
+            }).catch(retryError => {
+              clientLogger.warn('deferred_directory_retry_failed', retryError);
+            });
+          }, 2500);
         }
         // Hydrate the current bot topic from the server-scoped HTTP history
         // while Tinode establishes the realtime subscription.
@@ -9352,37 +9396,40 @@ function App() {
   };
 
   const handleStartDirectChat = async (contact) => {
+    let stateConversationId = '';
     try {
-    const safeContact = normalizeAccountShape(contact);
-    if (!safeContact) return;
-    if (safeContact.id === (currentUser?.id || currentUser?.uid)) {
-      setChatError('Không thể mở cuộc trò chuyện với chính tài khoản đang đăng nhập.');
-      return;
-    }
-    const contactName = conversationDisplayName(
-      { name: safeContact.name },
-      safeContact.username || safeContact.email || 'Người dùng',
-    );
-    const viewerId = currentUser?.id || currentUser?.uid;
-    const accountSession = accountSessionRef.current;
-    const linkedRoom = safeConversationValues(conversationsRef.current).find(room => (
-      !room.isGroup
-      && !room.isChatbot
-      && room.accountSession === accountSession
-      && isManagementConversationId(room.managementId || room.id)
-      && (
-        roomParticipantIds(room).map(String).includes(String(safeContact.id))
-        || roomMembers(room).some(member => findAccount(directoryAccounts, member.id || member.name)?.id === safeContact.id)
-      )
-    ));
-    const participantIds = safeContact.id ? [viewerId, safeContact.id] : [];
-    const contactId = chatMode === 'demo' && participantIds.length === 2
-      ? directConversationId(...participantIds)
-      : linkedRoom?.id || safeContact.id || contactName;
-      let stateConversationId = contactId;
+      const safeContact = normalizeAccountShape(contact);
+      if (!safeContact) return;
+      if (safeContact.id === (currentUser?.id || currentUser?.uid)) {
+        setChatError('Không thể mở cuộc trò chuyện với chính tài khoản đang đăng nhập.');
+        return;
+      }
+      const contactName = conversationDisplayName(
+        { name: safeContact.name },
+        safeContact.username || safeContact.email || 'Người dùng',
+      );
+      const viewerId = currentUser?.id || currentUser?.uid;
+      const accountSession = accountSessionRef.current;
+      const linkedRoom = safeConversationValues(conversationsRef.current).find(room => (
+        !room.isGroup
+        && !room.isChatbot
+        && room.accountSession === accountSession
+        && isManagementConversationId(room.managementId || room.id)
+        && (
+          roomParticipantIds(room).map(String).includes(String(safeContact.id))
+          || roomMembers(room).some(member => findAccount(directoryAccounts, member.id || member.name)?.id === safeContact.id)
+        )
+      ));
+      const participantIds = safeContact.id ? [viewerId, safeContact.id] : [];
+      const contactId = chatMode === 'demo' && participantIds.length === 2
+        ? directConversationId(...participantIds)
+        : linkedRoom?.id || safeContact.id || contactName;
+      stateConversationId = contactId;
       deletedConversationIdsRef.current.delete(contactId);
       let managedRoom = linkedRoom;
       let tinodeTopic = linkedRoom?.tinodeTopic
+        || safeContact.tinodeUid
+        || safeContact.tinode_uid
         || chatManagementService.getTinodeTopic(viewerId, linkedRoom?.managementId || contactId);
       const previousRooms = Object.fromEntries(safeConversationEntries(conversationsRef.current));
       const existingRoom = previousRooms[stateConversationId] || previousRooms[contactId] || managedRoom || linkedRoom;
@@ -9565,7 +9612,21 @@ function App() {
         setIsMobileChatActive(true);
       }
     } catch (err) {
-      setChatError(err?.message || 'Không thể mở cuộc trò chuyện.');
+      const errorMessage = err?.message || 'Không thể mở cuộc trò chuyện.';
+      setChatError(errorMessage);
+      if (stateConversationId) {
+        setConversations(previous => {
+          const current = previous[stateConversationId];
+          if (!current || current.directProvisioning !== 'pending') return previous;
+          return {
+            ...previous,
+            [stateConversationId]: {
+              ...current,
+              directProvisioning: 'error',
+            },
+          };
+        });
+      }
     }
   };
 

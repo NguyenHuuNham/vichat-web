@@ -1165,6 +1165,11 @@ export function translateUiText(value, language = 'vi') {
       ? 'You have not been granted permission by the administrator.'
       : 'Bạn chưa được admin cấp phép.';
   }
+  if (/(?:management service request timed out|request timed out|\b408\b)/i.test(value)) {
+    return language === 'en'
+      ? 'Management service request timed out. Please try again.'
+      : 'Dịch vụ máy chủ phản hồi quá lâu. Vui lòng thử lại sau.';
+  }
   if (language !== 'en') return value;
   if (Object.prototype.hasOwnProperty.call(ENGLISH_UI_TEXT, value)) return ENGLISH_UI_TEXT[value];
   for (const [pattern, translate] of ENGLISH_PATTERN_TRANSLATIONS) {

@@ -35,6 +35,32 @@ let presenceSequence = 0;
 let activeSession = null;
 let activeTinodePassword = '';
 const lastDirectorySyncByTenant = new Map();
+const directoryCacheByTenant = new Map();
+const DIRECTORY_CACHE_STORAGE_PREFIX = 'vichat.directory.cache.';
+
+function readDirectoryStorage(targetTenantId) {
+  if (!targetTenantId || typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage?.getItem(`${DIRECTORY_CACHE_STORAGE_PREFIX}${targetTenantId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDirectoryStorage(targetTenantId, accounts) {
+  if (!targetTenantId || !Array.isArray(accounts) || typeof window === 'undefined') return;
+  try {
+    window.localStorage?.setItem(
+      `${DIRECTORY_CACHE_STORAGE_PREFIX}${targetTenantId}`,
+      JSON.stringify(accounts.slice(0, 200)),
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 let tinodeTokenRequest = null;
 let directorySessionGeneration = 0;
 
@@ -918,22 +944,44 @@ export const chatManagementService = {
   async listUsers({ signal, cursor = '', query = '', limit = 100 } = {}) {
     if (!apiBase || !remoteAuth) throw new Error('Management service authentication is not configured.');
     const directoryScope = captureDirectoryScope();
+    const isBaseDirectory = !cursor && !String(query || '').trim();
     const params = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 100))) });
     if (cursor) params.set('cursor', String(cursor));
     if (String(query || '').trim()) params.set('q', String(query).trim());
-    const payload = await apiRequest(`/api/v1/chat/users?${params.toString()}`, {
-      cache: 'no-store',
-      signal,
-    });
-    assertDirectoryScope(directoryScope);
-    const accounts = activeTenantDirectoryAccounts(payload);
-    accounts.nextCursor = responseNextCursor(payload);
-    accounts.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? accounts.nextCursor);
-    accounts.total = Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null;
-    if (directoryScope.tenantId) {
-      lastDirectorySyncByTenant.set(directoryScope.tenantId, payload?.directory_sync || null);
+    try {
+      const payload = await apiRequest(`/api/v1/chat/users?${params.toString()}`, {
+        cache: 'no-store',
+        signal,
+      });
+      assertDirectoryScope(directoryScope);
+      const accounts = activeTenantDirectoryAccounts(payload);
+      accounts.nextCursor = responseNextCursor(payload);
+      accounts.hasMore = Boolean(payload?.has_more ?? payload?.hasMore ?? accounts.nextCursor);
+      accounts.total = Number.isFinite(Number(payload?.total)) ? Number(payload.total) : null;
+      if (directoryScope.tenantId) {
+        lastDirectorySyncByTenant.set(directoryScope.tenantId, payload?.directory_sync || null);
+        if (isBaseDirectory && accounts.length > 0) {
+          directoryCacheByTenant.set(directoryScope.tenantId, accounts);
+          writeDirectoryStorage(directoryScope.tenantId, accounts);
+        }
+      }
+      return accounts;
+    } catch (error) {
+      if (isBaseDirectory && directoryScope.tenantId) {
+        const cached = directoryCacheByTenant.get(directoryScope.tenantId)
+          || readDirectoryStorage(directoryScope.tenantId);
+        if (cached && cached.length > 0) {
+          lastDirectorySyncByTenant.set(directoryScope.tenantId, { status: 'stale' });
+          const accounts = Object.assign([...cached], {
+            nextCursor: null,
+            hasMore: false,
+            total: cached.length,
+          });
+          return accounts;
+        }
+      }
+      throw error;
     }
-    return accounts;
   },
 
   async listPersonalCloudFiles({ signal, cursor = '', limit = 100 } = {}) {
