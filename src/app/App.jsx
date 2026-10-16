@@ -1937,6 +1937,13 @@ function mergeTinodeMessages(existingMessages = [], incomingMessages = []) {
       if (second.message?.pending && !first.message?.pending && second.index < first.index) {
         return 1;
       }
+      // Protect against client-server clock skew when user message precedes reply in UI
+      if (first.message?.sender === 'outgoing' && second.message?.sender === 'incoming' && first.index < second.index) {
+        return -1;
+      }
+      if (second.message?.sender === 'outgoing' && first.message?.sender === 'incoming' && second.index < first.index) {
+        return 1;
+      }
       const firstTime = messageTimestamp(first.message);
       const secondTime = messageTimestamp(second.message);
       if (firstTime && secondTime && firstTime !== secondTime) return firstTime - secondTime;
@@ -16248,7 +16255,7 @@ function App() {
             const messageProfile = messageSenderProfile(msg);
             const displayedSenderName = activeChat.isGroup
               ? (messageProfile?.name || msg.senderName)
-              : msg.senderName;
+              : (activeChat.isChatbot ? CHATBOT_ACCOUNT.name : (msg.isBot ? CHATBOT_ACCOUNT.name : msg.senderName));
             if (entry.kind === 'image-batch') {
               return (
                 <React.Fragment key={entry.key}>
@@ -16496,7 +16503,7 @@ function App() {
                 >
                 {!isOutgoing && (
                   <button type="button" className="message-avatar message-profile-trigger" onClick={() => openProfileFor(messageSenderProfile(msg))} title={`${appCopy.t('Xem thông tin')} ${msg.senderName || appCopy.t('thành viên')}`}>
-                    <SafeAvatar src={msg.avatar || ''} name={displayedSenderName} />
+                    <SafeAvatar src={(activeChat.isChatbot || msg.isBot) ? CHATBOT_DEFAULT_AVATAR : (msg.avatar || '')} name={displayedSenderName} />
                     <GroupRoleBadge role={messageSenderGroupRole} copy={appCopy} />
                   </button>
                 )}
@@ -16551,22 +16558,29 @@ function App() {
                     {(msg.type === "text" || msg.type === "template" || msg.type === "buttons" || (!isStickerMessage && !isAudioMessage && !imagePreviewSource && !attachmentFile && msg.text)) && (
                       <div className={`message-bubble ${activeChat.isChatbot && !isOutgoing ? 'chatbot-answer-bubble' : ''} ${msg.type === 'template' ? 'template-message-bubble' : ''}`}>
                         <MessageReplyPreview reply={msg.replyTo} copy={appCopy} onClick={reply => scrollToMessageById(reply.id)} />
-                        {activeChat.isChatbot && !isOutgoing && (
-                          <div className="chatbot-answer-label">
-                            <span><i className="fa-solid fa-sparkles"></i>{msg.grounded
-                              ? ((msg.toolCalled || msg.tool_called)
-                                  ? appCopy.t('Dữ liệu vận hành doanh nghiệp')
-                                  : appCopy.t('Trích lọc từ tài liệu'))
-                              : msg.state === 'question-unclear'
-                                ? appCopy.t('Cần thêm thông tin')
-                                : msg.state === 'no-source'
-                                  ? appCopy.t('Không tìm thấy tài liệu phù hợp')
-                                  : msg.state === 'unavailable'
-                                    ? appCopy.t('Dịch vụ AI tạm thời không khả dụng')
-                                    : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
-                            {msg.grounded && <small>{(msg.toolCalled || msg.tool_called) ? appCopy.t('Xác thực nội bộ') : appCopy.t('Đã đối chiếu nguồn')}</small>}
-                          </div>
-                        )}
+                        {activeChat.isChatbot && !isOutgoing && (() => {
+                          const isEnterpriseToolMessage = Boolean(
+                            msg.toolCalled
+                            || msg.tool_called
+                            || /^(?:🏢|📋|👥|🔒)\s*(?:Dữ liệu|Báo cáo|Danh sách|Chính sách bảo mật)/u.test(String(msg.text || '').trim())
+                          );
+                          return (
+                            <div className="chatbot-answer-label">
+                              <span><i className="fa-solid fa-sparkles"></i>{isEnterpriseToolMessage
+                                ? appCopy.t('Dữ liệu vận hành doanh nghiệp')
+                                : msg.grounded
+                                  ? appCopy.t('Trích lọc từ tài liệu')
+                                  : msg.state === 'question-unclear'
+                                    ? appCopy.t('Cần thêm thông tin')
+                                    : msg.state === 'no-source'
+                                      ? appCopy.t('Không tìm thấy tài liệu phù hợp')
+                                      : msg.state === 'unavailable'
+                                        ? appCopy.t('Dịch vụ AI tạm thời không khả dụng')
+                                        : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
+                              {(msg.grounded || isEnterpriseToolMessage) && <small>{isEnterpriseToolMessage ? appCopy.t('Xác thực nội bộ') : appCopy.t('Đã đối chiếu nguồn')}</small>}
+                            </div>
+                          );
+                        })()}
                         {msg.edited && (
                           <button
                             type="button"

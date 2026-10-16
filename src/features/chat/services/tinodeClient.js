@@ -50,7 +50,7 @@ import {
   shouldFallbackToTinode,
   uploadChatMedia,
 } from './chatMediaService';
-import { CHATBOT_ACCOUNT, chatbotMessageCorrelationKey } from '../../chatbot/services/chatbotService';
+import { CHATBOT_ACCOUNT, CHATBOT_DEFAULT_AVATAR, chatbotMessageCorrelationKey } from '../../chatbot/services/chatbotService';
 import {
   applyRecallToMessage,
   applyEditToMessage,
@@ -950,16 +950,22 @@ function toMessage(msg, tinode, topic = null) {
     type: call ? 'call' : poll ? 'poll' : pollEvent ? 'poll_event' : friendEvent ? 'friend_event' : reactionEvent ? 'reaction_event' : recallEvent ? 'recall_event' : isEditEvent ? 'edit_event' : systemEvent ? 'system' : sticker ? 'sticker' : attachment ? (isImageAttachment ? 'image' : 'file') : 'text',
     action: friendEvent?.action || systemEvent?.action || pollEvent?.action,
     sender: isOutgoing ? 'outgoing' : 'incoming',
-    senderId: friendActorId
-      || (pollEvent ? (messageSenderId || pollEvent.actorId) : '')
-      || systemEvent?.actorId
-      || messageSenderId
-      || (isOutgoing ? tinode.getCurrentUserID() : undefined),
-    senderName: friendActorName
-      || (pollEvent ? (pollEvent.actorName || (messageSenderId ? undefined : 'Thành viên')) : '')
-      || systemEvent?.actorName
-      || reactionEvent?.actorName
-      || (isOutgoing ? undefined : (messageSenderId || 'Thành viên')),
+    isBot: Boolean(isChatbotPacket && !isOutgoing),
+    senderId: (isChatbotPacket && !isOutgoing)
+      ? CHATBOT_ACCOUNT.id
+      : (friendActorId
+          || (pollEvent ? (messageSenderId || pollEvent.actorId) : '')
+          || systemEvent?.actorId
+          || messageSenderId
+          || (isOutgoing ? tinode.getCurrentUserID() : undefined)),
+    senderName: (isChatbotPacket && !isOutgoing)
+      ? CHATBOT_ACCOUNT.name
+      : (friendActorName
+          || (pollEvent ? (pollEvent.actorName || (messageSenderId ? undefined : 'Thành viên')) : '')
+          || systemEvent?.actorName
+          || reactionEvent?.actorName
+          || (isOutgoing ? undefined : (messageSenderId || 'Thành viên'))),
+    avatar: (isChatbotPacket && !isOutgoing) ? CHATBOT_DEFAULT_AVATAR : undefined,
     targetIds: systemEvent?.targets?.map?.(target => target.id) || [],
     messagePreview: systemEvent?.messagePreview || '',
     systemEvent,
@@ -976,6 +982,7 @@ function toMessage(msg, tinode, topic = null) {
     mentions,
     sources: chatbotSources,
     grounded: msg.head?.['x-vichat-chatbot-grounded'] === '1',
+    toolCalled: msg.head?.['x-vichat-chatbot-tool-called'] === '1' || msg.head?.['x-vichat-chatbot-tool'] === '1',
     ...(chatbotCorrelationKey ? {
       correlationKey: chatbotCorrelationKey,
       chatbotTopic,

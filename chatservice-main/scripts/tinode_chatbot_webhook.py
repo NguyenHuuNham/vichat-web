@@ -257,6 +257,7 @@ class TinodeChatbotWorker(object):
                     "x-vichat-chatbot": "1",
                     "x-vichat-chatbot-source-seq": str(source_sequence),
                     "x-vichat-chatbot-grounded": "1" if chatbot_metadata.get("grounded") else "0",
+                    "x-vichat-chatbot-tool-called": "1" if chatbot_metadata.get("tool_called") else "0",
                     "x-vichat-chatbot-sources": json.dumps(
                         compact_sources,
                         ensure_ascii=False,
@@ -335,6 +336,7 @@ class TinodeChatbotWorker(object):
                 "reply": reply,
                 "grounded": bool(payload.get("grounded")),
                 "sources": payload.get("sources") if isinstance(payload.get("sources"), list) else [],
+                "tool_called": bool(payload.get("tool_called")),
             }
 
     async def _process_message(self, packet):

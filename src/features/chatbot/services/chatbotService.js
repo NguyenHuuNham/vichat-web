@@ -174,8 +174,6 @@ function isChatbotAssistantMessage(message) {
       .some(chatbotIdentityMatches);
 }
 
-// Old local/Tinode copies may contain a configurable bot avatar. Normalize
-// those copies at the storage boundary so every session renders one identity.
 export function normalizeChatbotMessage(message) {
   if (!message || typeof message !== 'object') return message;
   const replyTo = message.replyTo || message.reply_to;
@@ -184,19 +182,29 @@ export function normalizeChatbotMessage(message) {
   );
   const isAssistant = isChatbotAssistantMessage(message);
   const assistantAvatarNeedsNormalization = isAssistant && message.avatar !== CHATBOT_DEFAULT_AVATAR;
+  const assistantIdentityNeedsNormalization = isAssistant && (
+    message.senderName !== CHATBOT_ACCOUNT.name
+    || message.senderId !== CHATBOT_ACCOUNT.id
+    || !message.isBot
+  );
   const replyAvatarNeedsNormalization = replyIsChatbot && replyTo && replyTo.avatar !== CHATBOT_DEFAULT_AVATAR;
   const legacyReplyAvatarNeedsNormalization = replyIsChatbot
     && message.reply_to
     && message.reply_to.avatar !== CHATBOT_DEFAULT_AVATAR;
-  if (!assistantAvatarNeedsNormalization && !replyAvatarNeedsNormalization && !legacyReplyAvatarNeedsNormalization) {
+  if (!assistantAvatarNeedsNormalization && !assistantIdentityNeedsNormalization && !replyAvatarNeedsNormalization && !legacyReplyAvatarNeedsNormalization) {
     return message;
   }
   return {
     ...message,
-    ...(assistantAvatarNeedsNormalization ? { avatar: CHATBOT_DEFAULT_AVATAR } : {}),
+    ...(isAssistant ? {
+      senderName: CHATBOT_ACCOUNT.name,
+      senderId: CHATBOT_ACCOUNT.id,
+      avatar: CHATBOT_DEFAULT_AVATAR,
+      isBot: true,
+    } : {}),
     ...(replyIsChatbot && replyTo && (replyAvatarNeedsNormalization || legacyReplyAvatarNeedsNormalization) ? {
-      replyTo: { ...replyTo, avatar: CHATBOT_DEFAULT_AVATAR },
-      ...(message.reply_to ? { reply_to: { ...message.reply_to, avatar: CHATBOT_DEFAULT_AVATAR } } : {}),
+      replyTo: { ...replyTo, avatar: CHATBOT_DEFAULT_AVATAR, senderName: CHATBOT_ACCOUNT.name },
+      ...(message.reply_to ? { reply_to: { ...message.reply_to, avatar: CHATBOT_DEFAULT_AVATAR, senderName: CHATBOT_ACCOUNT.name } } : {}),
     } : {}),
   };
 }
@@ -362,11 +370,37 @@ export function mergeChatbotMessages(...sources) {
   return merged
     .map((message, index) => ({ message, index }))
     .sort((first, second) => {
+      const firstSeq = positiveSequence(first.message?.seq);
+      const secondSeq = positiveSequence(second.message?.seq);
+      if (firstSeq > 0 && secondSeq > 0 && firstSeq !== secondSeq) {
+        return firstSeq - secondSeq;
+      }
+      if (first.message?.chatbotSourceSequence && first.message.chatbotSourceSequence === secondSeq) {
+        return 1;
+      }
+      if (second.message?.chatbotSourceSequence && second.message.chatbotSourceSequence === firstSeq) {
+        return -1;
+      }
+      if (first.message?.pending && !second.message?.pending && first.index < second.index) {
+        return -1;
+      }
+      if (second.message?.pending && !first.message?.pending && second.index < first.index) {
+        return 1;
+      }
       const firstTime = Date.parse(first.message?.createdAt || '') || 0;
       const secondTime = Date.parse(second.message?.createdAt || '') || 0;
-      return firstTime && secondTime && firstTime !== secondTime
-        ? firstTime - secondTime
-        : first.index - second.index;
+      // Causal ordering: User question (outgoing) that arrived first in the session must precede the bot answer (incoming)
+      // even if client clock is slightly ahead of server clock
+      if (first.message?.sender === 'outgoing' && second.message?.sender === 'incoming' && first.index < second.index) {
+        return -1;
+      }
+      if (second.message?.sender === 'outgoing' && first.message?.sender === 'incoming' && second.index < first.index) {
+        return 1;
+      }
+      if (firstTime && secondTime && firstTime !== secondTime) {
+        return firstTime - secondTime;
+      }
+      return first.index - second.index;
     })
     .map(item => item.message);
 }

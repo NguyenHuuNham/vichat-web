@@ -542,6 +542,35 @@ test('replaces a pending chatbot copy with its delivered Tinode state', () => {
   assert.equal(result[0].deliveryStatus, 'sent');
 });
 
+test('guarantees user question precedes bot reply even when client clock is ahead of server clock', () => {
+  // User question optimistic timestamp: 13:38:15 (client PC clock ahead)
+  const question = {
+    id: 'me-1001',
+    sender: 'outgoing',
+    text: 'nhan vien hom nay co di lam khong',
+    createdAt: '2026-10-16T06:38:15.000Z',
+    seq: 10,
+  };
+  // Bot reply server timestamp: 13:38:12 (server clock 3s behind)
+  const answer = {
+    id: 'usrUfqXWc6rm-8-11',
+    sender: 'incoming',
+    senderId: 'usrUfqXWc6rm-8',
+    senderName: 'usrUfqXWc6rm-8',
+    text: 'Báo cáo điểm danh hôm nay...',
+    createdAt: '2026-10-16T06:38:12.000Z',
+    seq: 11,
+    chatbotSourceSequence: 10,
+  };
+
+  const result = mergeChatbotMessages([question], [answer]);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].id, 'me-1001', 'User question MUST be first');
+  assert.equal(result[1].id, 'usrUfqXWc6rm-8-11', 'Bot answer MUST be second');
+  assert.equal(result[1].senderName, CHATBOT_ACCOUNT.name, 'Bot senderName must be normalized to ViChat AI');
+  assert.equal(result[1].avatar, CHATBOT_DEFAULT_AVATAR, 'Bot avatar must be official ViChat AI avatar');
+});
+
 test('Tinode and conversation hydration keep chatbot correlation isolated from normal rooms', () => {
   assert.match(tinodeClientSource, /\['x-vichat-chatbot-source-seq'\]/);
   assert.match(tinodeClientSource, /const chatbotTinodeUid = String\(CHATBOT_ACCOUNT\.tinodeUid/);

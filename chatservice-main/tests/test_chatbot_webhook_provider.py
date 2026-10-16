@@ -13,7 +13,10 @@ MANAGER_PATH = Path(__file__).resolve().parents[1] / "application" / "services" 
 CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "application" / "controllers" / "api_chatbot.py"
 
 
-has_aiohttp = importlib.util.find_spec("aiohttp") is not None
+try:
+    has_aiohttp = importlib.util.find_spec("aiohttp") is not None
+except Exception:
+    has_aiohttp = False
 previous_aiohttp = sys.modules.get("aiohttp")
 if not has_aiohttp:
     aiohttp_stub = types.ModuleType("aiohttp")

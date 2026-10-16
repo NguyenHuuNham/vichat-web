@@ -61,6 +61,7 @@ def _tinode_chatbot_user(account):
         "full_name": account.full_name,
         "user_name": account.username,
         "username": account.username,
+        "role": account.role or "member",
         "department": account.department or "",
         "department_id": "",
         "tenant_id": account.tenant_id,

@@ -563,9 +563,14 @@ def detect_enterprise_intent(message):
     emp_match = re.search(r"\b(?:nhan vien|nhân viên|ban|bạn|anh|chi|chị|ong|ông|ba|bà)\s+([A-ZÀ-Ỹa-zà-ỹ0-9_\s]{2,30})\b", raw, re.IGNORECASE)
     if emp_match:
         cand = emp_match.group(1).strip()
-        cleaned = re.sub(r"\s+(?:hom nay|hôm nay|co di lam|có đi làm|co lam viec|có làm việc|khong|không|chua|chưa).*$", "", cand, flags=re.IGNORECASE).strip()
+        cleaned = re.sub(r"\s+(?:hom nay|hôm nay|hop nay|hợp nay|co di lam|có đi làm|co lam viec|có làm việc|khong|không|chua|chưa).*$", "", cand, flags=re.IGNORECASE).strip()
         cleaned_norm = _normalize_text(cleaned)
-        if cleaned_norm not in ("toan cong ty", "cong ty", "phong ban", "moi nguoi", "ai", "nao", "hom nay") and len(cleaned) >= 2:
+        stop_words = {
+            "toan cong ty", "cong ty", "phong ban", "moi nguoi", "ai", "nao", "hom nay",
+            "hop nay", "nay", "do", "minh", "chung", "toan bo", "tat ca", "cac", "nhung",
+            "co di lam", "co mat", "nhan vien", "nhan su", "can bo",
+        }
+        if cleaned_norm not in stop_words and len(cleaned) >= 2:
             employee_name = cleaned
 
     # 1. Attendance Intent

@@ -4,7 +4,46 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
-## 2026-10-16-03 - Nâng cấp ViChat AI thành Trợ lý Vận hành & Quản trị Doanh nghiệp (Enterprise AI Agent) với Tool Calling và Giám sát Chấm công / Tiến độ Công việc
+## 2026-10-16-04 - Sửa triệt để lỗi đảo ngược thứ tự tin nhắn hỏi/đáp của ViChat AI, chuẩn hóa định danh bot "ViChat AI" và đồng bộ quyền Quản trị/Lãnh đạo qua Tinode
+
+- Thoi gian: 2026-10-16 14:05 (Asia/Saigon)
+- Loai: Bug Fix | UI/UX Reliability | Realtime Message Ordering | Identity Normalization | RBAC Sync
+- Trang thai: Hoan tat 100%. 470/470 frontend tests PASS (29.9s), 50/50 backend tests PASS (0.213s), `npx oxlint` 0 errors, `npm run build:production` PASS (1.30s).
+- Nguyen nhan goc re:
+  1. **Đảo lộn thứ tự tin nhắn hỏi / đáp**:
+     - Trong `src/features/chatbot/services/chatbotService.js` hàm `mergeChatbotMessages`, việc sắp xếp tin nhắn trước đây chỉ so sánh `Date.parse(first.message?.createdAt) - Date.parse(second.message?.createdAt)`.
+     - Do đồng hồ máy tính của người dùng (client PC) có thể nhanh hơn đồng hồ máy chủ Linux vài giây, tin nhắn câu hỏi của người dùng (gửi đi với `createdAt` cục bộ) có timestamp lớn hơn câu trả lời của bot (sinh ra trên máy chủ Linux). Khi hợp nhất vào danh sách tin nhắn, câu hỏi bị đẩy tụt xuống dưới câu trả lời của bot.
+     - Hàm `mergeChatbotMessages` chưa xét đến số thứ tự tuần tự chuẩn `seq` của Tinode, chưa xét mối quan hệ nhân quả `chatbotSourceSequence`, và chưa có cơ chế bảo vệ nhân quả: câu hỏi của người dùng bắt đầu trước trong phiên làm việc phải luôn đứng trước câu trả lời của bot.
+  2. **Hiển thị tên người gửi là ID lạ `usrUfqXWc6rm-8` thay vì "ViChat AI"**:
+     - Khi tin nhắn bot đến từ Tinode, `tinodeClient.js` gán `senderName = messageSenderId` (`usrUfqXWc6rm-8` - Tinode UID của bot) và không gán avatar chính thức `CHATBOT_DEFAULT_AVATAR`.
+     - Trong `src/app/App.jsx`, biến `displayedSenderName` khi không phải nhóm chỉ lấy `msg.senderName` mà không kiểm tra phòng chat bot (`activeChat.isChatbot`).
+     - Hàm `normalizeChatbotMessage` chỉ chuẩn hóa avatar mà không chuẩn hóa `senderName` về `CHATBOT_ACCOUNT.name` ("ViChat AI").
+  3. **Tài khoản Lãnh đạo / Quản trị viên bị báo "Chính sách bảo mật & Phân quyền"**:
+     - Trong `chatservice-main/application/controllers/api_chatbot.py`, hàm `_tinode_chatbot_user` khi dựng thông tin người dùng từ `account` đã bỏ sót trường `role`. Do đó `user.get("role")` luôn là `None`, khiến bot nhận diện mọi tài khoản (kể cả Sếp / Admin / Manager) là `member` thường và từ chối cung cấp dữ liệu nhân sự toàn công ty.
+     - Trong `detect_enterprise_intent` (`enterprise_ai_tools.py`), câu hỏi có từ gõ nhầm như "hợp nay" (thay cho "hôm nay") bị hiểu nhầm là tên một nhân viên tên là "hợp nay", dẫn đến kiểm tra quyền truy vấn đích danh không khớp với tên tài khoản.
+     - `tinode_chatbot_webhook.py` chưa chuyển tiếp trường `tool_called` và header `x-vichat-chatbot-tool-called` đến Tinode, khiến UI phía web chưa hiển thị đúng nhãn "Dữ liệu vận hành doanh nghiệp".
+- Giai phap thuc hien:
+  1. **Khắc phục triệt để sắp xếp thứ tự tin nhắn (`chatbotService.js` & `App.jsx`)**:
+     - Cập nhật `mergeChatbotMessages` và `mergeTinodeMessages`:
+       - Ưu tiên tuyệt đối số thứ tự tuần tự `seq` (`firstSeq - secondSeq`).
+       - Nhận diện liên kết câu hỏi - câu trả lời qua `chatbotSourceSequence`.
+       - Ưu tiên trạng thái pending của người gửi (`first.index < second.index`).
+       - Ràng buộc quan hệ nhân quả: câu hỏi gửi đi (`sender === 'outgoing'`) trong cùng phiên làm việc (`first.index < second.index`) luôn đứng trước câu trả lời của bot (`sender === 'incoming'`), loại bỏ 100% rủi ro lệch đồng hồ client/server.
+  2. **Chuẩn hóa định danh và giao diện Bot ViChat AI (`tinodeClient.js`, `chatbotService.js`, `App.jsx`)**:
+     - Trong `tinodeClient.js`: Với gói tin chatbot (`isChatbotPacket && !isOutgoing`), thiết lập chuẩn `senderName: CHATBOT_ACCOUNT.name`, `senderId: CHATBOT_ACCOUNT.id`, `avatar: CHATBOT_DEFAULT_AVATAR`, `isBot: true`, và `toolCalled`.
+     - Trong `chatbotService.js`: `normalizeChatbotMessage` luôn đồng bộ `senderName: 'ViChat AI'` và avatar chính thức.
+     - Trong `src/app/App.jsx`: `displayedSenderName` và `SafeAvatar` trong hội thoại bot luôn hiển thị chuẩn "ViChat AI" và logo bot, loại bỏ hoàn toàn hiển thị UID thô.
+     - Cập nhật nhãn trả lời: Tự động nhận diện nội dung công cụ điều hành doanh nghiệp (kể cả khi không có header) để hiển thị nhãn `Dữ liệu vận hành doanh nghiệp` kèm huy hiệu `Xác thực nội bộ`.
+  3. **Đồng bộ quyền hạn và xử lý ngôn ngữ tự nhiên thông minh (`api_chatbot.py`, `enterprise_ai_tools.py`, `tinode_chatbot_webhook.py`)**:
+     - Bổ sung `role: account.role or "member"` vào `_tinode_chatbot_user`, đảm bảo Sếp và Trưởng phòng giữ nguyên quyền hạn khi hỏi qua Tinode chat.
+     - Bổ sung bộ từ dừng tiếng Việt (`stop_words`) trong `detect_enterprise_intent` để bỏ qua các từ phụ ("hợp nay", "hôm nay", "toàn công ty", "nhân viên", "nhân sự"), không bị gán nhầm thành tên người.
+     - Chuyển tiếp đầy đủ `tool_called` và `x-vichat-chatbot-tool-called` qua Webhook Tinode.
+- Kiem thu va Ket qua thuc te:
+  - Frontend unit tests: 470/470 PASS (29.9s).
+  - ChatbotService unit tests: 28/28 PASS (kèm test mới kiểm tra lệch đồng hồ và chuẩn hóa định danh).
+  - Backend unit tests: 50/50 tests PASS (`test_enterprise_ai_assistant.py`, `test_tinode_chatbot_webhook.py`, `test_chatbot_webhook_provider.py`).
+  - Linter: `npx oxlint src/` 0 lỗi.
+  - Production build: `npm run build:production` PASS (1.30s), sinh bundle mới `index-CojifZ5T.js` và `index-BScrP9HC.css`.
 
 - Thoi gian: 2026-10-16 11:25 (Asia/Saigon)
 - Loai: Feature Upgrade | Enterprise AI Agent | Tool Calling | Attendance & Task Tracking | RBAC Security
