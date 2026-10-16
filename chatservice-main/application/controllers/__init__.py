@@ -9,6 +9,7 @@ def init_controllers(app):
     import application.controllers.api_chat_media
     import application.controllers.api_personal_cloud
     import application.controllers.api_enterprise_workspace
+    import application.controllers.api_attendance
     import application.controllers.api_zalo
     import application.controllers.api_livechat
     if app.config.get("CHATBOT_ENABLED", False):

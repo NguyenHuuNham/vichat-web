@@ -656,6 +656,7 @@ async def chatbot_tinode_webhook(request):
                 "grounded": bool(result.get("grounded")),
                 "state": result.get("state"),
                 "sources": result.get("sources") or [],
+                "tool_called": result.get("tool_called"),
             },
         )
         return json({
@@ -667,6 +668,8 @@ async def chatbot_tinode_webhook(request):
             "grounded": bool(result.get("grounded")),
             "state": result.get("state"),
             "sources": result.get("sources") or [],
+            "tool_called": result.get("tool_called"),
+            "widget_data": result.get("tool_result"),
         })
     except ChatbotServiceError as error:
         return _error_response(error, "TINODE_CHATBOT_ERROR")
@@ -801,6 +804,7 @@ async def chatbot_message(request):
                 "grounded": bool(result.get("grounded")),
                 "state": result.get("state"),
                 "sources": result.get("sources") or [],
+                "tool_called": result.get("tool_called"),
             },
         )
         return json(result)

@@ -4,6 +4,50 @@ Day la bo nho ky thuat theo thu tu moi nhat truoc. Moi lan sua code, cau hinh, d
 
 Khong ghi mat khau, token, cookie, khoa API, du lieu ca nhan hoac gia tri bi mat vao file nay.
 
+## 2026-10-16-03 - Nâng cấp ViChat AI thành Trợ lý Vận hành & Quản trị Doanh nghiệp (Enterprise AI Agent) với Tool Calling và Giám sát Chấm công / Tiến độ Công việc
+
+- Thoi gian: 2026-10-16 11:25 (Asia/Saigon)
+- Loai: Feature Upgrade | Enterprise AI Agent | Tool Calling | Attendance & Task Tracking | RBAC Security
+- Trang thai: Hoan tat 100%. 9/9 backend unit tests cho Enterprise AI PASS (0.010s), 32/32 tests webhook PASS (0.190s), `npm run build` PASS (2.76s). Bảo lưu 100% logic Zalo OA.
+- Nguyen nhan goc re:
+  1. Trước đây, ViChat AI chỉ hoạt động như một hệ thống RAG tĩnh đơn thuần (truy vấn nội dung văn bản từ `knowledge-ai.gonapp.net`). Khi Ban Lãnh đạo hoặc Quản lý hỏi các câu hỏi điều hành thực tế như: "hôm nay nhân viên có làm việc không", "những task nào đang bị trễ hạn", "tiến độ công việc phòng IT thế nào", hệ thống trả lời "Dữ liệu chưa được cập nhật" vì bot không có công cụ truy vấn dữ liệu hoạt động thời gian thực từ cơ sở dữ liệu nội bộ.
+  2. Chưa có bảng cơ sở dữ liệu chuyên trách lưu trữ thông tin chấm công, điểm danh hàng ngày của nhân viên (`check_in_at`, `check_out_at`, `status`, `method`).
+  3. Thiếu cơ chế phân quyền bảo mật (RBAC) trên các công cụ truy vấn dữ liệu nội bộ của AI (nhân viên chỉ được xem của bản thân; trưởng phòng xem theo phòng ban; ban giám đốc xem toàn công ty).
+- Giai phap thuc hien:
+  1. **Bổ sung Model Chấm công Nhân sự (`chatservice-main/application/models/models.py`)**:
+     - Thêm bảng `employee_attendance` (`EmployeeAttendance`): `tenant_id`, `account_id`, `work_date`, `check_in_at`, `check_out_at`, `status` (`PRESENT`, `LATE`, `REMOTE`, `ON_LEAVE`, `NOT_CHECKED_IN`), `check_in_ip`, `check_in_method`, `note`, `properties`.
+     - Ràng buộc duy nhất `uq_employee_attendance_date` (`tenant_id`, `account_id`, `work_date`).
+  2. **Xây dựng Module Công cụ Điều hành Doanh nghiệp (`chatservice-main/application/services/enterprise_ai_tools.py`)**:
+     - Định nghĩa công cụ nghiệp vụ chuẩn OpenAI Function Calling:
+       - `get_employee_attendance_status`: Kết hợp dữ liệu chấm công `EmployeeAttendance`, thời điểm đăng nhập gần nhất `ManagementAccount.last_login_at`, và hoạt động tạo/sửa task trong ngày từ `EnterpriseActivity`.
+       - `get_company_tasks_summary`: Truy vấn công việc từ `EnterpriseItem` và `EnterpriseItemParticipant`, nhận diện các task bị quá hạn (`overdue_only`, `due_at < now_ms`), tiến độ thực hiện và người phụ trách.
+       - `get_department_roster`: Liệt kê cơ cấu phòng ban và danh sách nhân sự từ `OrganizationUnit` & `ManagementAccount`.
+     - **Kiểm soát phân quyền nghiêm ngặt (RBAC)**:
+       - `member`: Chỉ được xem dữ liệu cá nhân của mình, từ chối lịch sự nếu hỏi nhân sự khác.
+       - `manager`: Giới hạn trong phạm vi phòng ban được phân công.
+       - `admin`/`executive`: Toàn quyền tra cứu mọi phòng ban và nhân sự toàn công ty.
+     - **Bộ nhận diện ý định tiếng Việt tự nhiên (`detect_enterprise_intent`)**:
+       - Chuẩn hóa văn bản tiếng Việt không phụ thuộc thư viện ngoài (sử dụng `unicodedata`), xử lý hoàn hảo dấu tiếng Việt và ký tự "đ/Đ".
+       - Tự động bóc tách ngày (`hôm nay`, `hôm qua`, định dạng ngày), tên nhân viên, phòng ban, cờ trễ hạn.
+       - Tự động loại trừ các câu hỏi về chính sách/quy trình (`quy trinh`, `chinh sach`, `huong dan`) để chuyển tiếp sang hệ thống RAG.
+     - **Bộ định dạng báo cáo điều hành chuyên nghiệp (`format_enterprise_response`)**:
+       - Sinh câu trả lời định dạng chuẩn có emoji trực quan (🟢 Đang làm việc, 🟡 Đi muộn / Chưa điểm danh, 🔴 Vắng mặt, 🚨 Trễ hạn), tổng hợp số liệu trực quan cho lãnh đạo.
+  3. **Bộ Điều Phối Chatbot & Webhook (`chatbot_service.py` & `api_chatbot.py`)**:
+     - Tích hợp kiểm tra ý định điều hành trong `chatbot_service.reply`: tự động kích hoạt Enterprise Tools khi phát hiện câu hỏi về nhân sự, chấm công, tiến độ công việc.
+     - Bổ sung `tool_called` và `widget_data` vào phản hồi Webhook Tinode (`/api/v1/chatbot/tinode-webhook`) và Direct API (`/api/v1/chatbot/message`).
+  4. **API Điểm danh Nhân viên & Đồng bộ Webhook (`chatservice-main/application/controllers/api_attendance.py`)**:
+     - `POST /api/v1/attendance/check-in`: Điểm danh vào ca.
+     - `POST /api/v1/attendance/check-out`: Điểm danh ra ca.
+     - `GET /api/v1/attendance/today`: Xem trạng thái chấm công cá nhân hôm nay.
+     - `POST /api/v1/attendance/sync`: Webhook đồng bộ từ máy chấm công vân tay / FaceID hoặc UpGO HRM.
+     - Đăng ký controller trong `chatservice-main/application/controllers/__init__.py`.
+  5. **Giao diện ViChat Web (`src/app/App.jsx`)**:
+     - Cập nhật nhãn trả lời của AI: khi phản hồi từ công cụ điều hành nội bộ, hiển thị nhãn `Dữ liệu vận hành doanh nghiệp` và huy hiệu `Xác thực nội bộ`.
+- Kiem thu va Ket qua thuc te:
+  - `python -m unittest discover -s tests -p "test_enterprise_ai_assistant.py"`: 9/9 tests PASS (0.010s).
+  - `python -m unittest discover -s tests -p "test_chatbot_webhook_provider.py"`: 32/32 tests PASS (0.190s).
+  - `npm run build`: PASS (2.76s).
+
 ## 2026-10-16-02 - Khắc phục lỗi đảo ngược thứ tự tin nhắn hỏi/đáp (tin nhắn người dùng bị đẩy xuống sau câu trả lời của Bot)
 
 - Thoi gian: 2026-10-16 10:32 (Asia/Saigon)

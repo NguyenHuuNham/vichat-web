@@ -1,8 +1,11 @@
 import asyncio
+import logging
 import re
 import unicodedata
 
 import aiohttp
+
+logger = logging.getLogger(__name__)
 
 
 class ChatbotServiceError(Exception):
@@ -642,6 +645,34 @@ class ChatbotService(object):
     ):
         if not self.enabled:
             raise ChatbotServiceError("Chatbot chưa được cấu hình trên server.", status_code=503)
+
+        # Check for Enterprise Operational Tool Intent (Attendance, Tasks, Roster)
+        try:
+            from application.services.enterprise_ai_tools import (
+                detect_enterprise_intent,
+                execute_enterprise_tool,
+                format_enterprise_response,
+            )
+            intent = detect_enterprise_intent(message)
+            if intent:
+                tool_name = intent["tool"]
+                tool_args = intent.get("arguments", {})
+                tool_result = execute_enterprise_tool(tool_name, tool_args, user)
+                reply_text = format_enterprise_response(tool_name, tool_result, message, user)
+                return {
+                    "reply": reply_text,
+                    "model": "enterprise-agent",
+                    "provider": "enterprise-tools",
+                    "tool_called": tool_name,
+                    "tool_result": tool_result,
+                    "grounded": True,
+                    "state": "grounded",
+                    "usage": {},
+                }
+        except ImportError:
+            pass
+        except Exception as error:
+            logger.warning("Enterprise intent resolution fallback: %s", error)
 
         provider = str(self.app.config.get("CHATBOT_PROVIDER", "openai-compatible")).lower()
         if provider == "local":

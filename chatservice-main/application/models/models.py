@@ -624,3 +624,27 @@ class SecurityAuditLog(CommonModel):
     ip_address = db.Column(String(100))
     user_agent = db.Column(String(500))
     properties = db.Column(JSONB)
+
+
+class EmployeeAttendance(CommonModel):
+    __tablename__ = "employee_attendance"
+    tenant_id = db.Column(String(50), nullable=False, index=True)
+    account_id = db.Column(
+        String(100),
+        ForeignKey("management_account.id"),
+        nullable=False,
+        index=True,
+    )
+    work_date = db.Column(Date, nullable=False, index=True)
+    check_in_at = db.Column(BigInteger)
+    check_out_at = db.Column(BigInteger)
+    status = db.Column(String(30), nullable=False, default="PRESENT", index=True)
+    check_in_ip = db.Column(String(100))
+    check_in_method = db.Column(String(30), default="WEB")
+    note = db.Column(Text)
+    properties = db.Column(JSONB)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "account_id", "work_date", name="uq_employee_attendance_date"),
+        Index("ix_employee_attendance_tenant_date", "tenant_id", "work_date", "status"),
+    )
+

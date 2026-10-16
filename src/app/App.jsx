@@ -16554,7 +16554,9 @@ function App() {
                         {activeChat.isChatbot && !isOutgoing && (
                           <div className="chatbot-answer-label">
                             <span><i className="fa-solid fa-sparkles"></i>{msg.grounded
-                              ? appCopy.t('Trích lọc từ tài liệu')
+                              ? ((msg.toolCalled || msg.tool_called)
+                                  ? appCopy.t('Dữ liệu vận hành doanh nghiệp')
+                                  : appCopy.t('Trích lọc từ tài liệu'))
                               : msg.state === 'question-unclear'
                                 ? appCopy.t('Cần thêm thông tin')
                                 : msg.state === 'no-source'
@@ -16562,7 +16564,7 @@ function App() {
                                   : msg.state === 'unavailable'
                                     ? appCopy.t('Dịch vụ AI tạm thời không khả dụng')
                                     : msg.isWelcome ? 'ViChat AI' : appCopy.t('Phản hồi AI')}</span>
-                            {msg.grounded && <small>{appCopy.t('Đã đối chiếu nguồn')}</small>}
+                            {msg.grounded && <small>{(msg.toolCalled || msg.tool_called) ? appCopy.t('Xác thực nội bộ') : appCopy.t('Đã đối chiếu nguồn')}</small>}
                           </div>
                         )}
                         {msg.edited && (
